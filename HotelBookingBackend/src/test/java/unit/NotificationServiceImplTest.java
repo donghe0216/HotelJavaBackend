@@ -83,7 +83,7 @@ class NotificationServiceImplTest {
     }
 
     @Test
-    @DisplayName("TC-NS-04 | sendEmail | SMTP failure → email sent with correct recipient and subject")
+    @DisplayName("TC-NS-04 | sendEmail | SMTP 调用时使用正确的收件人、主题和正文")
     void sendEmail_smtpCall_usesCorrectRecipientAndSubject() {
         notificationService.sendEmail(dto);
 
