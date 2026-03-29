@@ -2,14 +2,10 @@ package api;
 
 import io.restassured.RestAssured;
 import io.restassured.builder.RequestSpecBuilder;
-import io.restassured.config.HttpClientConfig;
-import io.restassured.config.LogConfig;
-import io.restassured.config.RestAssuredConfig;
-import io.restassured.config.SSLConfig;
-import io.restassured.filter.log.LogDetail;
 import io.restassured.filter.log.RequestLoggingFilter;
 import io.restassured.filter.log.ResponseLoggingFilter;
 import io.restassured.http.ContentType;
+import io.restassured.response.Response;
 import io.restassured.specification.RequestSpecification;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -68,23 +64,8 @@ public abstract class BaseApiTest {
         RestAssured.baseURI  = BASE_URI;
         RestAssured.port     = PORT;
         RestAssured.basePath = BASE_PATH;
-        RestAssured.config   = RestAssuredConfig.config()
-                // Timeout: 10s for connection + socket
-                .httpClient(HttpClientConfig.httpClientConfig()
-                        .setParam("http.connection.timeout",         10_000)
-                        .setParam("http.socket.timeout",             10_000)
-                        .setParam("http.connection-manager.timeout", 10_000))
-                // SSL: trust all certs (safe for local/test environments)
-                .sslConfig(SSLConfig.sslConfig().relaxedHTTPSValidation())
-                // Logging: only log body on failures by default
-                .logConfig(LogConfig.logConfig()
-                        .enableLoggingOfRequestAndResponseIfValidationFails(LogDetail.ALL)
-                        .enablePrettyPrinting(true));
 
-        // URL encoding enabled (default) so special characters in query params are handled correctly
-        RestAssured.urlEncodingEnabled = true;
-
-        // Log everything when test.verbose=true (e.g. -Dtest.verbose=true)
+        // Log all requests & responses when running in verbose mode
         if (Boolean.getBoolean("test.verbose")) {
             RestAssured.filters(new RequestLoggingFilter(), new ResponseLoggingFilter());
         }
@@ -94,18 +75,18 @@ public abstract class BaseApiTest {
 
         adminSpec = new RequestSpecBuilder()
                 .addHeader("Authorization", "Bearer " + adminToken)
-                .setContentType("application/json; charset=UTF-8")
+                .setContentType(ContentType.JSON)
                 .setAccept(ContentType.JSON)
                 .build();
 
         customerSpec = new RequestSpecBuilder()
                 .addHeader("Authorization", "Bearer " + customerToken)
-                .setContentType("application/json; charset=UTF-8")
+                .setContentType(ContentType.JSON)
                 .setAccept(ContentType.JSON)
                 .build();
 
         anonSpec = new RequestSpecBuilder()
-                .setContentType("application/json; charset=UTF-8")
+                .setContentType(ContentType.JSON)
                 .setAccept(ContentType.JSON)
                 .build();
 
@@ -237,6 +218,46 @@ public abstract class BaseApiTest {
                 "DELETE FROM rooms WHERE room_number > 200;"
             ).start().waitFor(10, TimeUnit.SECONDS);
         } catch (Exception ignored) { /* best-effort — Docker may not be available in all envs */ }
+    }
+
+    // ── MailHog helper ────────────────────────────────────────────────────────
+    /**
+     * Queries MailHog's REST API and returns true if at least one email
+     * addressed to {@code recipient} has been received.
+     *
+     * Pre-condition: MailHog must be running (default: http://localhost:8025)
+     * and the backend must be configured to use MailHog as its SMTP server:
+     *
+     *   # application-local.properties
+     *   spring.mail.host=localhost
+     *   spring.mail.port=1025
+     *   spring.mail.properties.mail.smtp.auth=false
+     *   spring.mail.properties.mail.smtp.starttls.enable=false
+     */
+    private static final String MAILHOG_API = "http://localhost:8025/api/v2/messages";
+
+    protected static boolean mailhogReceivedEmailFor(String recipient) {
+        try {
+            Response response = RestAssured.given()
+                    .baseUri(MAILHOG_API)
+                    .get();
+            if (response.statusCode() != 200) return false;
+
+            List<Map<String, Object>> items = response.jsonPath().getList("items");
+            if (items == null) return false;
+
+            return items.stream().anyMatch(msg -> {
+                Map<?, ?> content = (Map<?, ?>) msg.get("Content");
+                if (content == null) return false;
+                Map<?, ?> headers = (Map<?, ?>) content.get("Headers");
+                if (headers == null) return false;
+                List<?> to = (List<?>) headers.get("To");
+                return to != null && to.stream()
+                        .anyMatch(addr -> addr.toString().contains(recipient));
+            });
+        } catch (Exception e) {
+            return false;  // MailHog not running — skip silently
+        }
     }
 
     // ── Cleanup helper ────────────────────────────────────────────────────────
