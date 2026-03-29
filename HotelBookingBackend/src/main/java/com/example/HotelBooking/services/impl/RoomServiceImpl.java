@@ -41,6 +41,19 @@ public class RoomServiceImpl implements RoomService {
     @Override
     public Response addRoom(RoomDTO roomDTO, MultipartFile imageFile) {
 
+        if (roomDTO.getRoomNumber() == null || roomDTO.getRoomNumber() <= 0) {
+            throw new IllegalArgumentException("Room number must be greater than 0");
+        }
+        if (roomDTO.getPricePerNight() == null || roomDTO.getPricePerNight().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Price per night must be greater than 0");
+        }
+        if (roomDTO.getCapacity() == null || roomDTO.getCapacity() <= 0) {
+            throw new IllegalArgumentException("Capacity must be greater than 0");
+        }
+        if (roomDTO.getType() == null) {
+            throw new IllegalArgumentException("Room type is required");
+        }
+
         Room roomToSave = modelMapper.map(roomDTO, Room.class);
 
         if (imageFile != null){
@@ -174,6 +187,10 @@ public class RoomServiceImpl implements RoomService {
 
     @Override
     public Response searchRoom(String input) {
+
+        if (input == null || input.trim().isEmpty()) {
+            throw new IllegalArgumentException("keyword cannot be empty");
+        }
 
         List<Room> roomList = roomRepository.searchRooms(input);
 

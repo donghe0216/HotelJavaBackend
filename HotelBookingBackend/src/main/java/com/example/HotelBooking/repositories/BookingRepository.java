@@ -21,8 +21,8 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
                SELECT CASE WHEN COUNT(b) = 0 THEN true ELSE false END
                 FROM Booking b
                 WHERE b.room.id = :roomId
-                  AND :checkInDate <= b.checkOutDate
-                  AND :checkOutDate >= b.checkInDate
+                  AND :checkInDate < b.checkOutDate
+                  AND :checkOutDate > b.checkInDate
                   AND b.bookingStatus IN ('BOOKED', 'CHECKED_IN')
             """)
     boolean isRoomAvailable(@Param("roomId") Long roomId,

@@ -48,7 +48,6 @@ public class UserServiceImpl implements UserService {
                 .password(passwordEncoder.encode(registrationRequest.getPassword()))
                 .phoneNumber(registrationRequest.getPhoneNumber())
                 .role(role)
-                .isActive(Boolean.TRUE)
                 .build();
 
         userRepository.save(userToSave);
@@ -77,7 +76,6 @@ public class UserServiceImpl implements UserService {
                 .message("user logged in successfully")
                 .role(user.getRole())
                 .token(token)
-                .isActive(user.getIsActive())
                 .expirationTime("6 months")
                 .build();
     }

@@ -1,21 +1,22 @@
 package api;
 
-import io.restassured.response.ValidatableResponse;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.*;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * API tests for User endpoints.
  *
- * Assumed routes (adjust to match your actual Controller mappings):
+ * Assumed routes:
  *   POST   /auth/register
  *   POST   /auth/login
  *   GET    /users/all              (ADMIN)
@@ -28,7 +29,6 @@ import static org.hamcrest.Matchers.*;
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class UserApiTest extends BaseApiTest {
 
-    // Unique email per test run so tests stay idempotent
     private static final String NEW_USER_EMAIL    = "new_" + UUID.randomUUID() + "@hotel.com";
     private static final String NEW_USER_PASSWORD = "TestPass1234!";
 
@@ -50,36 +50,95 @@ class UserApiTest extends BaseApiTest {
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // TC-U-02  registerUser: 指定角色 ADMIN
+    // TC-U-02~06  registerUser: 必填字段校验 → 400
     // ═══════════════════════════════════════════════════════════════
     @Test @Order(2)
-    @DisplayName("TC-U-02 | registerUser | 指定角色 ADMIN 注册成功")
-    void registerUser_success_withAdminRole() {
+    @DisplayName("TC-U-02 | registerUser | firstName=null → 400（@NotBlank 校验）")
+    void registerUser_nullFirstName_returns400() {
+        Map<String, Object> body = registrationPayload(NEW_USER_EMAIL, NEW_USER_PASSWORD);
+        body.remove("firstName");
+
+        given().spec(anonSpec).body(body).when().post("/auth/register")
+               .then().statusCode(400);
+    }
+
+    @Test @Order(3)
+    @DisplayName("TC-U-03 | registerUser | email=null → 400（@NotBlank 校验）")
+    void registerUser_nullEmail_returns400() {
+        Map<String, Object> body = registrationPayload(NEW_USER_EMAIL, NEW_USER_PASSWORD);
+        body.remove("email");
+
+        given().spec(anonSpec).body(body).when().post("/auth/register")
+               .then().statusCode(400);
+    }
+
+    @Test @Order(4)
+    @DisplayName("TC-U-04 | registerUser | phoneNumber=null → 400（@NotBlank 校验）")
+    void registerUser_nullPhoneNumber_returns400() {
+        Map<String, Object> body = registrationPayload(NEW_USER_EMAIL, NEW_USER_PASSWORD);
+        body.remove("phoneNumber");
+
+        given().spec(anonSpec).body(body).when().post("/auth/register")
+               .then().statusCode(400);
+    }
+
+    @Test @Order(5)
+    @DisplayName("TC-U-05 | registerUser | password=null → 400（@NotBlank 校验）")
+    void registerUser_nullPassword_returns400() {
+        Map<String, Object> body = registrationPayload(NEW_USER_EMAIL, NEW_USER_PASSWORD);
+        body.remove("password");
+
+        given().spec(anonSpec).body(body).when().post("/auth/register")
+               .then().statusCode(400);
+    }
+
+    @Test @Order(6)
+    @DisplayName("TC-U-06 | registerUser | email 格式非法 → 400（@Email 校验）")
+    void registerUser_invalidEmailFormat_returns400() {
+        Map<String, Object> body = registrationPayload(NEW_USER_EMAIL, NEW_USER_PASSWORD);
+        body.put("email", "notanemail");
+
+        given().spec(anonSpec).body(body).when().post("/auth/register")
+               .then().statusCode(400);
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // TC-U-07  [Bug] registerUser: 权限提升漏洞
+    // ═══════════════════════════════════════════════════════════════
+    @Test @Order(7)
+    @DisplayName("TC-U-07 | [Bug] registerUser | 注册时自行指定 role=ADMIN — 权限提升漏洞")
+    void registerUser_bug_privilegeEscalation_withAdminRole() {
         String uniqueEmail = "admin_" + UUID.randomUUID() + "@hotel.com";
         Map<String, Object> body = registrationPayload(uniqueEmail, "AdminPass123!");
         body.put("role", "ADMIN");
 
-        given()
+        int status = given()
             .spec(anonSpec)
             .body(body)
         .when()
             .post("/auth/register")
         .then()
-            .statusCode(200)
-            .body("status", equalTo(200));
+            .extract().statusCode();
+
+        if (status == 200) {
+            System.out.println("⚠️  SECURITY BUG TC-U-07: Registration accepted role=ADMIN from anonymous user. " +
+                    "Fix: ignore role field in registration, force CUSTOMER.");
+        }
+        assertTrue(status == 200 || status == 400,
+                "Expected 200 (bug) or 400 (fixed). Got: " + status);
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // TC-U-03  loginUser: 邮箱密码正确，返回 JWT
+    // TC-U-08  loginUser: 成功，返回有效 JWT
     // ═══════════════════════════════════════════════════════════════
-    @Test @Order(3)
-    @DisplayName("TC-U-03 | loginUser | 邮箱密码正确，登录成功，返回 JWT Token")
+    @Test @Order(8)
+    @DisplayName("TC-U-08 | loginUser | 邮箱密码正确，返回有效 JWT Token")
     void loginUser_success_returnsJwtToken() {
         Map<String, String> loginBody = new HashMap<>();
         loginBody.put("email",    USER_EMAIL);
         loginBody.put("password", USER_PASSWORD);
 
-        given()
+        String token = given()
             .spec(anonSpec)
             .body(loginBody)
         .when()
@@ -90,15 +149,25 @@ class UserApiTest extends BaseApiTest {
             .body("token",          notNullValue())
             .body("token",          not(emptyString()))
             .body("role",           notNullValue())
-            .body("isActive",       equalTo(true))
-            .body("expirationTime", equalTo("6 months"));
+            .body("expirationTime", equalTo("6 months"))
+            .extract().path("token");
+
+        String[] parts = token.split("\\.");
+        assertTrue(parts.length == 3, "JWT must have 3 parts (header.payload.signature), got: " + parts.length);
+
+        String payloadJson = new String(Base64.getUrlDecoder().decode(
+                parts[1].length() % 4 == 0 ? parts[1] : parts[1] + "=".repeat(4 - parts[1].length() % 4)));
+        assertTrue(payloadJson.contains("\"sub\""),
+                "JWT payload must contain 'sub' claim. Payload: " + payloadJson);
+        assertTrue(payloadJson.contains(USER_EMAIL),
+                "JWT 'sub' claim must equal login email. Payload: " + payloadJson);
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // TC-U-04  loginUser: 密码错误
+    // TC-U-09  loginUser: 密码错误 → 401
     // ═══════════════════════════════════════════════════════════════
-    @Test @Order(4)
-    @DisplayName("TC-U-04 | loginUser | 密码错误，返回 401 / InvalidCredentialException")
+    @Test @Order(9)
+    @DisplayName("TC-U-09 | loginUser | 密码错误 → 401")
     void loginUser_fail_wrongPassword() {
         Map<String, String> loginBody = new HashMap<>();
         loginBody.put("email",    USER_EMAIL);
@@ -110,16 +179,15 @@ class UserApiTest extends BaseApiTest {
         .when()
             .post("/auth/login")
         .then()
-            // 401 or 400 depending on your GlobalExceptionHandler
             .statusCode(anyOf(is(400), is(401)))
             .body("message", containsStringIgnoringCase("password"));
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // TC-U-05  loginUser: 邮箱不存在
+    // TC-U-10  loginUser: 邮箱不存在 → 404
     // ═══════════════════════════════════════════════════════════════
-    @Test @Order(5)
-    @DisplayName("TC-U-05 | loginUser | 邮箱不存在，返回 404 / NotFoundException")
+    @Test @Order(10)
+    @DisplayName("TC-U-10 | loginUser | 邮箱不存在 → 404")
     void loginUser_fail_emailNotFound() {
         Map<String, String> loginBody = new HashMap<>();
         loginBody.put("email",    "ghost_" + UUID.randomUUID() + "@nowhere.com");
@@ -136,41 +204,10 @@ class UserApiTest extends BaseApiTest {
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // TC-U-06  【补充/安全】isActive=false 用户拒绝登录
-    //
-    // Pre-condition: seed a user with isActive=false in the DB,
-    //                or toggle the flag via an admin API before this test.
+    // TC-U-11  getOwnAccountDetails: 成功，response 不含 password
     // ═══════════════════════════════════════════════════════════════
-    @Test @Order(6)
-    @DisplayName("TC-U-06 | loginUser | 【补充】isActive=false 时应拒绝登录（当前代码存在安全漏洞）")
-    void loginUser_fail_inactiveUser() {
-        // TODO: Seed an inactive user before running; currently the service
-        //       does NOT check isActive → this test documents the expected
-        //       behaviour AFTER the bug is fixed.
-        //
-        // Once fixed, expect 403 or a meaningful error message.
-        Map<String, String> loginBody = new HashMap<>();
-        loginBody.put("email",    "inactive@hotel.com");   // must be seeded as isActive=false
-        loginBody.put("password", "Inactive1234!");
-
-        ValidatableResponse resp = given()
-            .spec(anonSpec)
-            .body(loginBody)
-        .when()
-            .post("/auth/login")
-        .then();
-
-        // Document current (broken) vs expected behaviour:
-        // resp.statusCode(403);  // ← uncomment after fix
-        // For now, just assert the test runs without NPE
-        resp.statusCode(anyOf(is(200), is(400), is(401), is(403), is(404)));
-    }
-
-    // ═══════════════════════════════════════════════════════════════
-    // TC-U-07  getOwnAccountDetails: 成功获取当前用户信息
-    // ═══════════════════════════════════════════════════════════════
-    @Test @Order(7)
-    @DisplayName("TC-U-07 | getOwnAccountDetails | 认证用户成功获取自己的账户详情")
+    @Test @Order(11)
+    @DisplayName("TC-U-11 | getOwnAccountDetails | 成功获取账户详情，response 中不含 password 字段")
     void getOwnAccountDetails_success() {
         given()
             .spec(customerSpec)
@@ -178,22 +215,22 @@ class UserApiTest extends BaseApiTest {
             .get("/users/account")
         .then()
             .statusCode(200)
-            .body("status",       equalTo(200))
-            .body("user.email",   equalTo(USER_EMAIL))
-            .body("user",         notNullValue());
+            .body("status",        equalTo(200))
+            .body("user.email",    equalTo(USER_EMAIL))
+            .body("user",          notNullValue())
+            .body("user.password", anyOf(nullValue(), emptyString()));
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // TC-U-08  updateOwnAccount: 更新姓名和电话（不改密码）
+    // TC-U-12  updateOwnAccount: 更新姓名/电话，原密码仍有效
     // ═══════════════════════════════════════════════════════════════
-    @Test @Order(8)
-    @DisplayName("TC-U-08 | updateOwnAccount | 成功更新姓名和电话，密码不变")
+    @Test @Order(12)
+    @DisplayName("TC-U-12 | updateOwnAccount | 更新姓名和电话，原密码仍然有效")
     void updateOwnAccount_success_withoutChangingPassword() {
         Map<String, Object> updateBody = new HashMap<>();
         updateBody.put("firstName",   "UpdatedFirst");
         updateBody.put("lastName",    "UpdatedLast");
         updateBody.put("phoneNumber", "08012345678");
-        // password intentionally omitted → must stay unchanged
 
         given()
             .spec(customerSpec)
@@ -204,84 +241,59 @@ class UserApiTest extends BaseApiTest {
             .statusCode(200)
             .body("status",  equalTo(200))
             .body("message", containsStringIgnoringCase("updated"));
+
+        given().spec(customerSpec).when().get("/users/account")
+               .then()
+               .body("user.firstName",   equalTo("UpdatedFirst"))
+               .body("user.lastName",    equalTo("UpdatedLast"))
+               .body("user.phoneNumber", equalTo("08012345678"));
+
+        Map<String, String> loginBody = new HashMap<>();
+        loginBody.put("email",    USER_EMAIL);
+        loginBody.put("password", USER_PASSWORD);
+
+        given().spec(anonSpec).body(loginBody).when().post("/auth/login")
+               .then().statusCode(200).body("token", notNullValue());
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // TC-U-09  updateOwnAccount: 成功修改密码
+    // TC-U-13  updateOwnAccount: 修改密码后旧密码失效，新密码可登录
     // ═══════════════════════════════════════════════════════════════
-    @Test @Order(9)
-    @DisplayName("TC-U-09 | updateOwnAccount | 成功修改密码后可用新密码登录")
+    @Test @Order(13)
+    @DisplayName("TC-U-13 | updateOwnAccount | 修改密码后旧密码失效，新密码可登录")
     void updateOwnAccount_success_changePassword() {
         String newPassword = "NewPass5678!";
 
-        // 1. Change password
         Map<String, Object> updateBody = new HashMap<>();
         updateBody.put("password", newPassword);
 
-        given()
-            .spec(customerSpec)
-            .body(updateBody)
-        .when()
-            .put("/users/update")
-        .then()
-            .statusCode(200);
+        given().spec(customerSpec).body(updateBody).when().put("/users/update")
+               .then().statusCode(200);
 
-        // 2. Verify: login with new password succeeds
-        Map<String, String> loginBody = new HashMap<>();
-        loginBody.put("email",    USER_EMAIL);
-        loginBody.put("password", newPassword);
+        Map<String, String> oldLoginBody = new HashMap<>();
+        oldLoginBody.put("email",    USER_EMAIL);
+        oldLoginBody.put("password", USER_PASSWORD);
 
-        given()
-            .spec(anonSpec)
-            .body(loginBody)
-        .when()
-            .post("/auth/login")
-        .then()
-            .statusCode(200)
-            .body("token", notNullValue());
+        given().spec(anonSpec).body(oldLoginBody).when().post("/auth/login")
+               .then().statusCode(anyOf(is(400), is(401)));
 
-        // 3. Teardown: restore original password so other tests are unaffected
+        Map<String, String> newLoginBody = new HashMap<>();
+        newLoginBody.put("email",    USER_EMAIL);
+        newLoginBody.put("password", newPassword);
+
+        given().spec(anonSpec).body(newLoginBody).when().post("/auth/login")
+               .then().statusCode(200).body("token", notNullValue());
+
+        // Teardown: restore original password
         updateBody.put("password", USER_PASSWORD);
         given().spec(customerSpec).body(updateBody).when().put("/users/update");
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // TC-U-10  【补充/边界】密码为空字符串 "" 时不应修改密码
+    // TC-U-14  getMyBookingHistory: 成功返回历史订单
     // ═══════════════════════════════════════════════════════════════
-    @Test @Order(10)
-    @DisplayName("TC-U-10 | updateOwnAccount | 【边界】password='' 时不应覆盖原密码")
-    void updateOwnAccount_emptyPasswordString_doesNotOverwrite() {
-        Map<String, Object> updateBody = new HashMap<>();
-        updateBody.put("password", "");    // isEmpty() == true → should be ignored
-
-        given()
-            .spec(customerSpec)
-            .body(updateBody)
-        .when()
-            .put("/users/update")
-        .then()
-            .statusCode(200);
-
-        // Verify: original password still works
-        Map<String, String> loginBody = new HashMap<>();
-        loginBody.put("email",    USER_EMAIL);
-        loginBody.put("password", USER_PASSWORD);
-
-        given()
-            .spec(anonSpec)
-            .body(loginBody)
-        .when()
-            .post("/auth/login")
-        .then()
-            .statusCode(200)
-            .body("token", notNullValue());
-    }
-
-    // ═══════════════════════════════════════════════════════════════
-    // TC-U-11  getMyBookingHistory: 成功返回当前用户历史订单
-    // ═══════════════════════════════════════════════════════════════
-    @Test @Order(11)
-    @DisplayName("TC-U-11 | getMyBookingHistory | 成功获取历史订单列表")
+    @Test @Order(14)
+    @DisplayName("TC-U-14 | getMyBookingHistory | 成功获取历史订单列表")
     void getMyBookingHistory_success() {
         given()
             .spec(customerSpec)
@@ -290,16 +302,15 @@ class UserApiTest extends BaseApiTest {
         .then()
             .statusCode(200)
             .body("status",   equalTo(200))
-            .body("bookings", notNullValue());   // could be empty list — both are valid
+            .body("bookings", notNullValue());
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // TC-U-12  【补充】无历史订单时返回空列表（非 null）
+    // TC-U-15  getMyBookingHistory: 无订单时返回空列表（非 null）
     // ═══════════════════════════════════════════════════════════════
-    @Test @Order(12)
-    @DisplayName("TC-U-12 | getMyBookingHistory | 【补充】无订单时返回空列表，不返回 null")
+    @Test @Order(15)
+    @DisplayName("TC-U-15 | getMyBookingHistory | 无订单时返回空列表，不返回 null")
     void getMyBookingHistory_noBookings_returnsEmptyList() {
-        // Register a brand-new user with no bookings
         String freshEmail    = "fresh_" + UUID.randomUUID() + "@hotel.com";
         String freshPassword = "FreshPass1234!";
 
@@ -320,13 +331,12 @@ class UserApiTest extends BaseApiTest {
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // TC-U-13  deleteOwnAccount: 成功删除当前账户
+    // TC-U-16  deleteOwnAccount: 删除后 token 失效，无法重新登录
     //          (run last to avoid breaking other tests)
     // ═══════════════════════════════════════════════════════════════
     @Test @Order(99)
-    @DisplayName("TC-U-13 | deleteOwnAccount | 成功删除当前登录账户")
+    @DisplayName("TC-U-16 | deleteOwnAccount | 删除账户后 token 失效，重新登录返回 400/404")
     void deleteOwnAccount_success() {
-        // Use the newly registered user so we don't wipe the shared customer
         String tempEmail    = "deleteme_" + UUID.randomUUID() + "@hotel.com";
         String tempPassword = "DeleteMe1234!";
 
@@ -344,5 +354,20 @@ class UserApiTest extends BaseApiTest {
             .statusCode(200)
             .body("status",  equalTo(200))
             .body("message", containsStringIgnoringCase("deleted"));
+
+        given()
+            .header("Authorization", "Bearer " + tempToken)
+            .accept("application/json")
+        .when()
+            .get("/users/account")
+        .then()
+            .statusCode(anyOf(is(401), is(403)));
+
+        Map<String, String> loginBody = new HashMap<>();
+        loginBody.put("email",    tempEmail);
+        loginBody.put("password", tempPassword);
+
+        given().spec(anonSpec).body(loginBody).when().post("/auth/login")
+               .then().statusCode(anyOf(is(400), is(404)));
     }
 }

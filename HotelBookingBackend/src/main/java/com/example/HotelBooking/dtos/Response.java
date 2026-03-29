@@ -25,7 +25,6 @@ public class Response {
     //for login
     private String token;
     private UserRole role;
-    private Boolean isActive;
     private String expirationTime;
 
     //user data output

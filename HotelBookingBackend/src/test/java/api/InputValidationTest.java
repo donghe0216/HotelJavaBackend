@@ -92,7 +92,7 @@ class InputValidationTest extends BaseApiTest {
     void register_emptyBody_doesNotReturn500() {
         given().spec(anonSpec).body("{}")
             .when().post("/auth/register")
-            .then().statusCode(not(500));
+            .then().statusCode(400);
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -104,7 +104,7 @@ class InputValidationTest extends BaseApiTest {
     void login_emptyBody_doesNotReturn500() {
         given().spec(anonSpec).body("{}")
             .when().post("/auth/login")
-            .then().statusCode(not(500));
+            .then().statusCode(400);
     }
 
     @Test @Order(7)
@@ -116,7 +116,7 @@ class InputValidationTest extends BaseApiTest {
 
         given().spec(anonSpec).body(body)
             .when().post("/auth/login")
-            .then().statusCode(not(500));
+            .then().statusCode(400);
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -132,7 +132,7 @@ class InputValidationTest extends BaseApiTest {
 
         given().spec(customerSpec).body(body)
             .when().post("/bookings")
-            .then().statusCode(not(500));
+            .then().statusCode(404);  // roomId missing → NotFoundException
     }
 
     @Test @Order(9)
@@ -144,11 +144,23 @@ class InputValidationTest extends BaseApiTest {
 
         given().spec(customerSpec).body(body)
             .when().post("/bookings")
-            .then().statusCode(not(500));
+            .then().statusCode(400);
     }
 
     @Test @Order(10)
-    @DisplayName("TC-IV-10 | createBooking | 日期格式非法（非 yyyy-MM-dd），不应返回 500")
+    @DisplayName("TC-IV-10 | createBooking | 缺少 checkOutDate，应返回 400")
+    void createBooking_missingCheckOut_returns400() {
+        Map<String, Object> body = new HashMap<>();
+        body.put("roomId",      1L);
+        body.put("checkInDate", inDays(5));
+
+        given().spec(customerSpec).body(body)
+            .when().post("/bookings")
+            .then().statusCode(400);
+    }
+
+    @Test @Order(11)
+    @DisplayName("TC-IV-11 | createBooking | 日期格式非法（非 yyyy-MM-dd），不应返回 500")
     void createBooking_invalidDateFormat_doesNotReturn500() {
         Map<String, Object> body = new HashMap<>();
         body.put("roomId",       1L);
@@ -157,15 +169,15 @@ class InputValidationTest extends BaseApiTest {
 
         given().spec(customerSpec).body(body)
             .when().post("/bookings")
-            .then().statusCode(not(500));
+            .then().statusCode(400);
     }
 
     // ═══════════════════════════════════════════════════════════════
     // GROUP 4: addRoom — invalid enum / wrong types
     // ═══════════════════════════════════════════════════════════════
 
-    @Test @Order(11)
-    @DisplayName("TC-IV-11 | addRoom | type 为非法枚举值，应返回 400")
+    @Test @Order(12)
+    @DisplayName("TC-IV-12 | addRoom | type 为非法枚举值，应返回 400")
     void addRoom_invalidRoomTypeEnum_returns400() {
         given()
             .spec(adminSpec)
@@ -181,8 +193,8 @@ class InputValidationTest extends BaseApiTest {
             .statusCode(not(500));
     }
 
-    @Test @Order(12)
-    @DisplayName("TC-IV-12 | addRoom | pricePerNight 传字符串，不应返回 500")
+    @Test @Order(13)
+    @DisplayName("TC-IV-13 | addRoom | pricePerNight 传字符串，不应返回 500")
     void addRoom_priceAsString_doesNotReturn500() {
         given()
             .spec(adminSpec)
@@ -194,11 +206,11 @@ class InputValidationTest extends BaseApiTest {
         .when()
             .post("/rooms/add")
         .then()
-            .statusCode(not(500));
+            .statusCode(400);
     }
 
-    @Test @Order(13)
-    @DisplayName("TC-IV-13 | addRoom | pricePerNight 为负数，不应返回 500")
+    @Test @Order(14)
+    @DisplayName("TC-IV-14 | addRoom | pricePerNight 为负数，不应返回 500")
     void addRoom_negativePrice_doesNotReturn500() {
         given()
             .spec(adminSpec)
@@ -210,27 +222,27 @@ class InputValidationTest extends BaseApiTest {
         .when()
             .post("/rooms/add")
         .then()
-            .statusCode(not(500));
+            .statusCode(400);
     }
 
     // ═══════════════════════════════════════════════════════════════
     // GROUP 5: searchRoom — special characters / edge inputs
     // ═══════════════════════════════════════════════════════════════
 
-    @Test @Order(14)
-    @DisplayName("TC-IV-14 | searchRoom | 特殊字符输入，不应返回 500")
+    @Test @Order(15)
+    @DisplayName("TC-IV-15 | searchRoom | 特殊字符输入，不应返回 500")
     void searchRoom_specialCharacters_doesNotReturn500() {
         given()
             .spec(anonSpec)
-            .queryParam("input", "' OR 1=1; --")   // SQL injection attempt
+            .queryParam("input", "' OR 1=1; --")   // SQL injection attempt — REST Assured handles URL encoding
         .when()
             .get("/rooms/search")
         .then()
-            .statusCode(not(500));
+            .statusCode(anyOf(is(200), is(400)));  // treated as normal search or rejected, never 500
     }
 
-    @Test @Order(15)
-    @DisplayName("TC-IV-15 | searchRoom | 超长关键词（300字符），不应返回 500")
+    @Test @Order(16)
+    @DisplayName("TC-IV-16 | searchRoom | 超长关键词（300字符），不应返回 500")
     void searchRoom_oversizedInput_doesNotReturn500() {
         given()
             .spec(anonSpec)
@@ -238,11 +250,11 @@ class InputValidationTest extends BaseApiTest {
         .when()
             .get("/rooms/search")
         .then()
-            .statusCode(not(500));
+            .statusCode(200);  // oversized input treated as normal search, returns empty list
     }
 
-    @Test @Order(16)
-    @DisplayName("TC-IV-16 | searchRoom | Unicode / 日语字符输入，不应返回 500")
+    @Test @Order(17)
+    @DisplayName("TC-IV-17 | searchRoom | Unicode / 日语字符输入，不应返回 500")
     void searchRoom_unicodeInput_doesNotReturn500() {
         given()
             .spec(anonSpec)
@@ -250,6 +262,6 @@ class InputValidationTest extends BaseApiTest {
         .when()
             .get("/rooms/search")
         .then()
-            .statusCode(not(500));
+            .statusCode(anyOf(is(200), is(400)));  // unicode handled gracefully, never 500
     }
 }

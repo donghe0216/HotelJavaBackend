@@ -4,14 +4,19 @@ package com.example.HotelBooking.payments.stripe;
 import com.example.HotelBooking.dtos.NotificationDTO;
 import com.example.HotelBooking.entities.Booking;
 import com.example.HotelBooking.entities.PaymentEntity;
+import com.example.HotelBooking.entities.User;
+import com.example.HotelBooking.enums.BookingStatus;
 import com.example.HotelBooking.enums.NotificationType;
 import com.example.HotelBooking.enums.PaymentGateway;
 import com.example.HotelBooking.enums.PaymentStatus;
+import com.example.HotelBooking.exceptions.InvalidBookingStateAndDateException;
 import com.example.HotelBooking.exceptions.NotFoundException;
 import com.example.HotelBooking.payments.stripe.dto.PaymentRequest;
 import com.example.HotelBooking.repositories.BookingRepository;
 import com.example.HotelBooking.repositories.PaymentRepository;
 import com.example.HotelBooking.services.NotificationService;
+import com.example.HotelBooking.services.UserService;
+import org.springframework.security.access.AccessDeniedException;
 import com.stripe.Stripe;
 import com.stripe.model.PaymentIntent;
 import com.stripe.param.PaymentIntentCreateParams;
@@ -31,6 +36,7 @@ public class PaymentService {
     private final BookingRepository bookingRepository;
     private final PaymentRepository paymentRepository;
     private final NotificationService notificationService;
+    private final UserService userService;
 
     @Value("${stripe.api.secret.key}")
     private String secreteKey;
@@ -73,7 +79,26 @@ public class PaymentService {
         String bookingReference = paymentRequest.getBookingReference();
 
         Booking booking = bookingRepository.findByBookingReference(bookingReference)
-                .orElseThrow(()-> new NotFoundException("Booing Not Found"));
+                .orElseThrow(()-> new NotFoundException("Booking Not Found"));
+
+        // ✅ 改造 1: 权限校验 — booking 必须属于当前登录用户
+        User currentUser = userService.getCurrentLoggedInUser();
+        if (!booking.getUser().getId().equals(currentUser.getId())) {
+            throw new AccessDeniedException("You are not allowed to update this booking's payment");
+        }
+
+        // ✅ 改造 2: 幂等性 — 已 COMPLETED 直接返回，不重复处理
+        if (booking.getPaymentStatus() == PaymentStatus.COMPLETED) {
+            log.info("Payment already completed for booking {}, skipping update", bookingReference);
+            return;
+        }
+
+        // ✅ 改造 3: 状态合理性 — 只有 BOOKED 状态才能支付
+        if (booking.getBookingStatus() != BookingStatus.BOOKED) {
+            throw new InvalidBookingStateAndDateException(
+                "Payment is only allowed for bookings with status BOOKED. Current status: "
+                + booking.getBookingStatus());
+        }
 
         PaymentEntity payment = new PaymentEntity();
         payment.setPaymentGateway(PaymentGateway.STRIPE);
