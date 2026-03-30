@@ -420,9 +420,10 @@ class RoomApiTest extends BaseApiTest {
     @Test @Order(21)
     @DisplayName("TC-R-21 | addRoom | roomNumber 已存在（299），应返回 409 或 400（源码无显式重复校验）")
     void should_throw_when_room_number_already_exists() {
-        // [面试素材] RoomServiceImpl.addRoom() 无显式 roomNumber 重复校验，
-        // 依赖 DB unique constraint 触发 DataIntegrityViolationException。
-        // GlobalExceptionHandler 应将其映射为 409，而非 500。
+        // [面试素材] 当前行为：第二次 POST 触发 DB unique constraint，
+        // DataIntegrityViolationException 未被捕获 → 实际返回 500（而非 409）。
+        // 这个 test 同时验证了：GlobalExceptionHandler 对 DataIntegrityViolationException
+        // 的处理是否完善（期望 400/409，若返回 500 则是需要修复的 bug）。
 
         // Step 1: create room 299 (unique number unlikely to conflict with other tests)
         given()

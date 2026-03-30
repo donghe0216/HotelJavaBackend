@@ -78,9 +78,28 @@ class RoomServiceImplTest {
     @Test
     @DisplayName("TC-RS-24 | addRoom | roomNumber 已存在 → DataIntegrityViolationException（源码无显式重复校验）")
     void should_throw_when_room_number_already_exists() {
-        // [面试素材] addRoom() 无显式 roomNumber 重复校验，直接调用 repository.save()。
-        // 若 DB 有 unique constraint，则抛 DataIntegrityViolationException。
-        // 推荐改进：先查询 roomNumber 是否存在，给出业务友好的错误信息，而非 DB 层异常。
+        // [面试素材] Design gap: addRoom() 无显式 roomNumber 重复校验，直接调用 save()。
+        // Room 实体上有 @Column(unique = true)，所以 DB 会抛 DataIntegrityViolationException，
+        // 但该异常未被 Service 或 GlobalExceptionHandler 捕获 → 前端收到 500，而非友好的 409。
+        //
+        // 修复方案对比（面试可以展开讲）：
+        //
+        // 方案A — check-then-act（推荐用于本场景）：
+        //   RoomRepository 加 existsByRoomNumber(Integer)，
+        //   addRoom() 调用 save() 前先查，冲突则抛业务异常。
+        //   优点：错误信息明确，易测试。
+        //   缺点：TOCTOU 窗口（并发时仍可能绕过检查）。
+        //   可接受原因：addRoom 是管理员低频操作，并发概率极低。
+        //
+        // 方案B — insert-then-catch（高并发场景更健壮）：
+        //   直接 save()，catch DataIntegrityViolationException，
+        //   再抛业务异常。真正依赖 DB unique constraint 做保证，无 TOCTOU。
+        //   缺点：DataIntegrityViolationException 可能来自多个字段，需解析 cause。
+        //
+        // 对比点（面试素材）：
+        //   BookingCodeGenerator 选 insert-then-retry，因为 bookingReference 生成频率高、
+        //   并发窗口真实存在；而 addRoom 选 check-then-act 更合适，
+        //   展示了"方案选型要结合并发量"的判断力。
         Room roomToSave = new Room();
         when(modelMapper.map(validRoomDTO, Room.class)).thenReturn(roomToSave);
         when(roomRepository.save(any(Room.class)))
