@@ -6,6 +6,7 @@ import com.example.HotelBooking.entities.Room;
 import com.example.HotelBooking.enums.RoomType;
 import com.example.HotelBooking.exceptions.InvalidBookingStateAndDateException;
 import com.example.HotelBooking.exceptions.NotFoundException;
+import org.springframework.dao.DataIntegrityViolationException;
 import com.example.HotelBooking.repositories.RoomRepository;
 import com.example.HotelBooking.services.impl.RoomServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
@@ -71,6 +72,23 @@ class RoomServiceImplTest {
 
         assertThat(response.getStatus()).isEqualTo(200);
         assertThat(response.getMessage()).containsIgnoringCase("added");
+        verify(roomRepository, times(1)).save(any(Room.class));
+    }
+
+    @Test
+    @DisplayName("TC-RS-24 | addRoom | roomNumber 已存在 → DataIntegrityViolationException（源码无显式重复校验）")
+    void should_throw_when_room_number_already_exists() {
+        // [面试素材] addRoom() 无显式 roomNumber 重复校验，直接调用 repository.save()。
+        // 若 DB 有 unique constraint，则抛 DataIntegrityViolationException。
+        // 推荐改进：先查询 roomNumber 是否存在，给出业务友好的错误信息，而非 DB 层异常。
+        Room roomToSave = new Room();
+        when(modelMapper.map(validRoomDTO, Room.class)).thenReturn(roomToSave);
+        when(roomRepository.save(any(Room.class)))
+                .thenThrow(new DataIntegrityViolationException("Duplicate entry for room_number"));
+
+        assertThatThrownBy(() -> roomService.addRoom(validRoomDTO, null))
+                .isInstanceOf(DataIntegrityViolationException.class);
+
         verify(roomRepository, times(1)).save(any(Room.class));
     }
 
