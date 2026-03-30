@@ -376,7 +376,24 @@ class RoomServiceImplTest {
     // ── searchRoom ────────────────────────────────────────────────────────────
 
     @Test
-    @DisplayName("TC-RS-20 | searchRoom | 有效关键词 → 返回匹配结果")
+    @DisplayName("TC-RS-20 | getAvailableRooms | 无可用房间时返回空列表，不抛异常")
+    void getAvailableRooms_noRoomsAvailable_returnsEmptyList() {
+        LocalDate checkIn  = LocalDate.now().plusDays(1);
+        LocalDate checkOut = LocalDate.now().plusDays(3);
+
+        when(roomRepository.findAvailableRooms(checkIn, checkOut, RoomType.SINGLE))
+                .thenReturn(List.of());
+        when(modelMapper.map(any(), (Type) any())).thenReturn(List.of());
+
+        Response response = roomService.getAvailableRooms(checkIn, checkOut, RoomType.SINGLE);
+
+        assertThat(response.getStatus()).isEqualTo(200);
+        assertThat(response.getRooms()).isNotNull().isEmpty();
+        verify(roomRepository, times(1)).findAvailableRooms(checkIn, checkOut, RoomType.SINGLE);
+    }
+
+    @Test
+    @DisplayName("TC-RS-21 | searchRoom | 有效关键词 → 返回匹配结果")
     void searchRoom_validKeyword() {
         Room room = Room.builder().id(1L).type(RoomType.SINGLE).description("Cozy single room").build();
         RoomDTO roomDTO = RoomDTO.builder().id(1L).description("Cozy single room").build();
@@ -391,10 +408,22 @@ class RoomServiceImplTest {
     }
 
     @Test
-    @DisplayName("TC-RS-21 | searchRoom | 空字符串 → IllegalArgumentException")
+    @DisplayName("TC-RS-22 | searchRoom | 空字符串 → IllegalArgumentException（源码暂缺此校验，此 test 记录期望行为）")
     void searchRoom_emptyString_throwsException() {
         assertThatThrownBy(() -> roomService.searchRoom(""))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("keyword cannot be empty");
+    }
+
+    @Test
+    @DisplayName("TC-RS-23 | searchRoom | 关键字无匹配时返回空列表，不抛异常")
+    void searchRoom_noMatchFound_returnsEmptyList() {
+        when(roomRepository.searchRooms("xyzxyzxyz")).thenReturn(List.of());
+        when(modelMapper.map(any(), (Type) any())).thenReturn(List.of());
+
+        Response response = roomService.searchRoom("xyzxyzxyz");
+
+        assertThat(response.getStatus()).isEqualTo(200);
+        assertThat(response.getRooms()).isNotNull().isEmpty();
     }
 }
