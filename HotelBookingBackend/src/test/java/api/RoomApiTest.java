@@ -326,7 +326,7 @@ class RoomApiTest extends BaseApiTest {
         .when()
             .get("/rooms/available")
         .then()
-            .statusCode(anyOf(is(400), is(422)))
+            .statusCode(400)
             .body("message", containsStringIgnoringCase("before today"));
     }
 
@@ -344,7 +344,7 @@ class RoomApiTest extends BaseApiTest {
         .when()
             .get("/rooms/available")
         .then()
-            .statusCode(anyOf(is(400), is(422)))
+            .statusCode(400)
             .body("message", containsStringIgnoringCase("before check in"));
     }
 
@@ -362,8 +362,8 @@ class RoomApiTest extends BaseApiTest {
         .when()
             .get("/rooms/available")
         .then()
-            .statusCode(anyOf(is(400), is(422)))
-            .body("message", containsStringIgnoringCase("equal"));
+            .statusCode(400)
+            .body("message", containsStringIgnoringCase("equal to check out date"));
     }
 
     // ═══════════════════════════════════════════════════════════════

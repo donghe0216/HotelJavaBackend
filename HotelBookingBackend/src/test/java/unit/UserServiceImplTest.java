@@ -127,6 +127,8 @@ class UserServiceImplTest {
         assertThat(existingUser.getFirstName()).isEqualTo("Updated");
         assertThat(existingUser.getLastName()).isEqualTo("User");            // unchanged
         assertThat(existingUser.getEmail()).isEqualTo("customer@hotel.com"); // unchanged
+        assertThat(existingUser.getPassword()).isEqualTo("$2a$encoded_original"); // unchanged
+        assertThat(existingUser.getPhoneNumber()).isNull();                        // unchanged
         verify(passwordEncoder, never()).encode(any());
         verify(userRepository, times(1)).save(existingUser);
     }
@@ -180,6 +182,44 @@ class UserServiceImplTest {
         verify(userRepository).save(captor.capture());
 
         assertThat(captor.getValue().getRole()).isEqualTo(UserRole.CUSTOMER);
+    }
+
+    // ── updateOwnAccount: email validation ───────────────────────────────────
+
+    @Test
+    @DisplayName("TC-US-08 | updateOwnAccount | [Bug] email 格式非法时 Service 层不校验，直接写入并调用 save")
+    void updateOwnAccount_invalidEmailFormat_noValidationBug() {
+        // [面试素材] Bug: UserDTO.email 无 @Email 注解，UserServiceImpl 也无格式校验，
+        // 任意字符串（如 "not-an-email"）都能通过 Service 层写入 existingUser 并被 save()。
+        // 正确做法：UserDTO 加 @Email + @Valid，在 Controller 层拦截，返回 400。
+        UserDTO dto = new UserDTO();
+        dto.setEmail("not-an-email");
+
+        userService.updateOwnAccount(dto);
+
+        // 当前（broken）行为：email 被直接写入，save() 被调用
+        assertThat(existingUser.getEmail()).isEqualTo("not-an-email");
+        verify(userRepository, times(1)).save(existingUser);
+        System.out.println("⚠️  TC-US-08: invalid email format accepted by service — missing @Email validation");
+    }
+
+    @Test
+    @DisplayName("TC-US-09 | updateOwnAccount | email 已被其他用户占用 → DataIntegrityViolationException 向上冒泡（未被 Service 捕获）")
+    void updateOwnAccount_duplicateEmail_throwsDataIntegrityViolation() {
+        // [面试素材] Service 无显式 email 重复检查，直接调用 save()。
+        // 若 email 已存在于其他用户，DB unique constraint 触发 DataIntegrityViolationException。
+        // GlobalExceptionHandler 捕获该异常并返回 409，但 Service 层本身未处理，
+        // 意味着这是一个"靠框架兜底"的设计，而非主动防御。
+        // 推荐改进：save() 前调用 userRepository.existsByEmail() 提前检查，给出明确业务异常。
+        UserDTO dto = new UserDTO();
+        dto.setEmail("admin@hotel.com"); // 已被其他用户占用
+
+        when(userRepository.save(any())).thenThrow(
+                new org.springframework.dao.DataIntegrityViolationException("Duplicate entry for email"));
+
+        assertThatThrownBy(() -> userService.updateOwnAccount(dto))
+                .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+        verify(userRepository, times(1)).save(existingUser);
     }
 
     // ── deleteOwnAccount ──────────────────────────────────────────────────────
