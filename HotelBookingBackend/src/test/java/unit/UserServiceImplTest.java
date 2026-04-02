@@ -1,5 +1,6 @@
 package unit;
 
+import com.example.HotelBooking.dtos.LoginRequest;
 import com.example.HotelBooking.dtos.RegistrationRequest;
 import com.example.HotelBooking.dtos.Response;
 import com.example.HotelBooking.dtos.UserDTO;
@@ -71,99 +72,33 @@ class UserServiceImplTest {
         SecurityContextHolder.clearContext();
     }
 
-    // ── updateOwnAccount: password boundary tests ─────────────────────────────
-    // Rule: if password is null or empty, skip encode and leave existing password unchanged
+    // ── loginUser ─────────────────────────────────────────────────────────────
 
     @Test
-    @DisplayName("TC-US-01 | updateOwnAccount | password='' does not overwrite existing password")
-    void updateOwnAccount_emptyPassword_doesNotEncodeOrSave() {
-        // Rule: empty string password → passwordEncoder.encode() must NOT be called
-        UserDTO dto = new UserDTO();
-        dto.setPassword("");
+    @DisplayName("TC-US-01 | loginUser | email & password 均匹配 → 返回 200、token、正确 role")
+    void loginUser_validCredentials_returnsTokenAndRole() {
+        existingUser.setRole(UserRole.CUSTOMER);
 
-        userService.updateOwnAccount(dto);
+        LoginRequest req = new LoginRequest();
+        req.setEmail("customer@hotel.com");
+        req.setPassword("Customer1234!");
 
-        verify(passwordEncoder, never()).encode(anyString());
-        // user is still saved (other fields may update), but password field unchanged
-        assertThat(existingUser.getPassword()).isEqualTo("$2a$encoded_original");
+        when(userRepository.findByEmail("customer@hotel.com")).thenReturn(Optional.of(existingUser));
+        when(passwordEncoder.matches("Customer1234!", existingUser.getPassword())).thenReturn(true);
+        when(jwtUtils.generateToken("customer@hotel.com")).thenReturn("mock-jwt-token");
+
+        Response response = userService.loginUser(req);
+
+        assertThat(response.getStatus()).isEqualTo(200);
+        assertThat(response.getToken()).isEqualTo("mock-jwt-token");
+        assertThat(response.getRole()).isEqualTo(UserRole.CUSTOMER);
+        verify(jwtUtils, times(1)).generateToken("customer@hotel.com");
     }
 
-    @Test
-    @DisplayName("TC-US-02 | updateOwnAccount | password=null does not overwrite existing password")
-    void updateOwnAccount_nullPassword_doesNotEncode() {
-        // Rule: null password → passwordEncoder.encode() must NOT be called
-        UserDTO dto = new UserDTO();
-        dto.setPassword(null);
-
-        userService.updateOwnAccount(dto);
-
-        verify(passwordEncoder, never()).encode(anyString());
-        assertThat(existingUser.getPassword()).isEqualTo("$2a$encoded_original");
-    }
+    // ── registerUser ──────────────────────────────────────────────────────────
 
     @Test
-    @DisplayName("TC-US-03 | updateOwnAccount | valid password is encoded and saved")
-    void updateOwnAccount_validPassword_encodesAndSaves() {
-        // Rule: non-empty password → must be encoded via passwordEncoder before saving
-        UserDTO dto = new UserDTO();
-        dto.setPassword("NewPass1234!");
-
-        when(passwordEncoder.encode("NewPass1234!")).thenReturn("$2a$encoded_new");
-
-        userService.updateOwnAccount(dto);
-
-        verify(passwordEncoder, times(1)).encode("NewPass1234!");
-        assertThat(existingUser.getPassword()).isEqualTo("$2a$encoded_new");
-    }
-
-    @Test
-    @DisplayName("TC-US-04 | updateOwnAccount | only firstName updated, other fields unchanged")
-    void updateOwnAccount_onlyFirstName_otherFieldsUnchanged() {
-        UserDTO dto = new UserDTO();
-        dto.setFirstName("Updated");
-
-        userService.updateOwnAccount(dto);
-
-        assertThat(existingUser.getFirstName()).isEqualTo("Updated");
-        assertThat(existingUser.getLastName()).isEqualTo("User");            // unchanged
-        assertThat(existingUser.getEmail()).isEqualTo("customer@hotel.com"); // unchanged
-        assertThat(existingUser.getPassword()).isEqualTo("$2a$encoded_original"); // unchanged
-        assertThat(existingUser.getPhoneNumber()).isNull();                        // unchanged
-        verify(passwordEncoder, never()).encode(any());
-        verify(userRepository, times(1)).save(existingUser);
-    }
-
-    // ── registerUser: role assignment tests ───────────────────────────────────
-
-    @Test
-    @DisplayName("TC-US-05 | registerUser | [Bug] role=ADMIN in request is accepted (privilege escalation)")
-    void registerUser_withAdminRole_privilegeEscalationBug() {
-        RegistrationRequest req = new RegistrationRequest();
-        req.setFirstName("Test");
-        req.setLastName("Admin");
-        req.setEmail("admin_test@hotel.com");
-        req.setPassword("Admin1234!");
-        req.setPhoneNumber("09000000000");
-        req.setRole(UserRole.ADMIN);
-
-        when(passwordEncoder.encode(anyString())).thenReturn("$2a$encoded");
-
-        userService.registerUser(req);
-
-        ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
-        verify(userRepository).save(captor.capture());
-
-        User saved = captor.getValue();
-        // Bug: role=ADMIN is accepted — should be forced to CUSTOMER
-        // After fix: assertThat(saved.getRole()).isEqualTo(UserRole.CUSTOMER)
-        System.out.println("⚠️  TC-US-05: registered user role = " + saved.getRole()
-                + (saved.getRole() == UserRole.ADMIN
-                   ? " ← BUG: privilege escalation" : " ← FIXED"));
-        assertThat(saved.getRole()).isIn(UserRole.ADMIN, UserRole.CUSTOMER);
-    }
-
-    @Test
-    @DisplayName("TC-US-06 | registerUser | no role in request → defaults to CUSTOMER")
+    @DisplayName("TC-US-02 | registerUser | no role in request → defaults to CUSTOMER")
     void registerUser_success_roleIsCustomer() {
         // Rule: when no role is provided, the service must default to CUSTOMER
         RegistrationRequest req = new RegistrationRequest();
@@ -184,7 +119,94 @@ class UserServiceImplTest {
         assertThat(captor.getValue().getRole()).isEqualTo(UserRole.CUSTOMER);
     }
 
-    // ── updateOwnAccount: email validation ───────────────────────────────────
+    @Test
+    @DisplayName("TC-US-03 | registerUser | [Bug] role=ADMIN in request is accepted (privilege escalation)")
+    void registerUser_withAdminRole_privilegeEscalationBug() {
+        RegistrationRequest req = new RegistrationRequest();
+        req.setFirstName("Test");
+        req.setLastName("Admin");
+        req.setEmail("admin_test@hotel.com");
+        req.setPassword("Admin1234!");
+        req.setPhoneNumber("09000000000");
+        req.setRole(UserRole.ADMIN);
+
+        when(passwordEncoder.encode(anyString())).thenReturn("$2a$encoded");
+
+        userService.registerUser(req);
+
+        ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
+        verify(userRepository).save(captor.capture());
+
+        User saved = captor.getValue();
+        // Bug: role=ADMIN is accepted — should be forced to CUSTOMER
+        // After fix: assertThat(saved.getRole()).isEqualTo(UserRole.CUSTOMER)
+        System.out.println("⚠️  TC-US-03: registered user role = " + saved.getRole()
+                + (saved.getRole() == UserRole.ADMIN
+                   ? " ← BUG: privilege escalation" : " ← FIXED"));
+        assertThat(saved.getRole()).isIn(UserRole.ADMIN, UserRole.CUSTOMER);
+    }
+
+    // ── updateOwnAccount ──────────────────────────────────────────────────────
+    // Rule: if password is null or empty, skip encode and leave existing password unchanged
+
+    @Test
+    @DisplayName("TC-US-04 | updateOwnAccount | only firstName updated, other fields unchanged")
+    void updateOwnAccount_onlyFirstName_otherFieldsUnchanged() {
+        UserDTO dto = new UserDTO();
+        dto.setFirstName("Updated");
+
+        userService.updateOwnAccount(dto);
+
+        assertThat(existingUser.getFirstName()).isEqualTo("Updated");
+        assertThat(existingUser.getLastName()).isEqualTo("User");            // unchanged
+        assertThat(existingUser.getEmail()).isEqualTo("customer@hotel.com"); // unchanged
+        assertThat(existingUser.getPassword()).isEqualTo("$2a$encoded_original"); // unchanged
+        assertThat(existingUser.getPhoneNumber()).isNull();                        // unchanged
+        verify(passwordEncoder, never()).encode(any());
+        verify(userRepository, times(1)).save(existingUser);
+    }
+
+    @Test
+    @DisplayName("TC-US-05 | updateOwnAccount | password='' does not overwrite existing password")
+    void updateOwnAccount_emptyPassword_doesNotEncodeOrSave() {
+        // Rule: empty string password → passwordEncoder.encode() must NOT be called
+        UserDTO dto = new UserDTO();
+        dto.setPassword("");
+
+        userService.updateOwnAccount(dto);
+
+        verify(passwordEncoder, never()).encode(anyString());
+        // user is still saved (other fields may update), but password field unchanged
+        assertThat(existingUser.getPassword()).isEqualTo("$2a$encoded_original");
+    }
+
+    @Test
+    @DisplayName("TC-US-06 | updateOwnAccount | password=null does not overwrite existing password")
+    void updateOwnAccount_nullPassword_doesNotEncode() {
+        // Rule: null password → passwordEncoder.encode() must NOT be called
+        UserDTO dto = new UserDTO();
+        dto.setPassword(null);
+
+        userService.updateOwnAccount(dto);
+
+        verify(passwordEncoder, never()).encode(anyString());
+        assertThat(existingUser.getPassword()).isEqualTo("$2a$encoded_original");
+    }
+
+    @Test
+    @DisplayName("TC-US-07 | updateOwnAccount | valid password is encoded and saved")
+    void updateOwnAccount_validPassword_encodesAndSaves() {
+        // Rule: non-empty password → must be encoded via passwordEncoder before saving
+        UserDTO dto = new UserDTO();
+        dto.setPassword("NewPass1234!");
+
+        when(passwordEncoder.encode("NewPass1234!")).thenReturn("$2a$encoded_new");
+
+        userService.updateOwnAccount(dto);
+
+        verify(passwordEncoder, times(1)).encode("NewPass1234!");
+        assertThat(existingUser.getPassword()).isEqualTo("$2a$encoded_new");
+    }
 
     @Test
     @DisplayName("TC-US-08 | updateOwnAccount | [Bug] email 格式非法时 Service 层不校验，直接写入并调用 save")
@@ -225,7 +247,7 @@ class UserServiceImplTest {
     // ── deleteOwnAccount ──────────────────────────────────────────────────────
 
     @Test
-    @DisplayName("TC-US-07 | deleteOwnAccount | authenticated user is deleted from repository")
+    @DisplayName("TC-US-10 | deleteOwnAccount | authenticated user is deleted from repository")
     void deleteUser_success() {
         // Security context is already set to customer@hotel.com in BeforeEach
         // userRepository.findByEmail("customer@hotel.com") returns existingUser (lenient)
