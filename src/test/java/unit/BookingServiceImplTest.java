@@ -361,11 +361,8 @@ class BookingServiceImplTest {
     }
 
     @Test
-    @DisplayName("TC-BS-15 | createBooking | [Bug] pricePerNight=null → NPE, no domain exception")
+    @DisplayName("TC-BS-15 | createBooking | pricePerNight=null → throws domain exception, no save")
     void should_throw_when_price_is_null() {
-        // Bug: calculateTotalPrice calls pricePerNight.multiply() without a null guard.
-        // If room data is incomplete, an NPE is thrown instead of a domain exception.
-        // Fix: validate pricePerNight != null in addRoom() or at the start of calculateTotalPrice().
         testRoom.setPricePerNight(null);
 
         when(userService.getCurrentLoggedInUser()).thenReturn(testUser);
@@ -373,7 +370,8 @@ class BookingServiceImplTest {
         when(bookingRepository.isRoomAvailable(any(), any(), any())).thenReturn(true);
 
         assertThatThrownBy(() -> bookingService.createBooking(validBookingDTO))
-                .isInstanceOf(NullPointerException.class);
+                .isInstanceOf(InvalidBookingStateAndDateException.class)
+                .hasMessageContaining("price");
 
         verify(bookingRepository, never()).save(any());
     }

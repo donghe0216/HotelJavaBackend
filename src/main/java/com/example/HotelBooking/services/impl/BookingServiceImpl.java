@@ -179,6 +179,9 @@ public class BookingServiceImpl implements BookingService {
 
     private BigDecimal calculateTotalPrice(Room room, BookingDTO bookingDTO){
         BigDecimal pricePerNight = room.getPricePerNight();
+        if (pricePerNight == null) {
+            throw new InvalidBookingStateAndDateException("Room price is not set");
+        }
         long days = ChronoUnit.DAYS.between(bookingDTO.getCheckInDate(), bookingDTO.getCheckOutDate());
         return pricePerNight.multiply(BigDecimal.valueOf(days));
     }
