@@ -175,6 +175,10 @@ public class RoomServiceImpl implements RoomService {
     @Override
     public Response searchRoom(String input) {
 
+        if (input == null || input.isBlank()) {
+            throw new IllegalArgumentException("keyword cannot be empty");
+        }
+
         List<Room> roomList = roomRepository.searchRooms(input);
 
         List<RoomDTO> roomDTOList = modelMapper.map(roomList,new TypeToken<List<RoomDTO>>() {}.getType());
