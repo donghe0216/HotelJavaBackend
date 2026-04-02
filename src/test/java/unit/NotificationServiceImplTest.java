@@ -42,8 +42,6 @@ class NotificationServiceImplTest {
         dto.setBookingReference("ABC-123");
     }
 
-    // ─────────────────────────────────────────────────────────────
-
     @Test
     @DisplayName("TC-NS-01 | sendEmail | SMTP succeeds → notification record saved")
     void sendEmail_smtpSucceeds_notificationSaved() {
@@ -83,7 +81,7 @@ class NotificationServiceImplTest {
     }
 
     @Test
-    @DisplayName("TC-NS-04 | sendEmail | SMTP 调用时使用正确的收件人、主题和正文")
+    @DisplayName("TC-NS-04 | sendEmail | SMTP call uses correct recipient, subject and body")
     void sendEmail_smtpCall_usesCorrectRecipientAndSubject() {
         notificationService.sendEmail(dto);
 

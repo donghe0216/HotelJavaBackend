@@ -27,30 +27,21 @@ class BookingCodeGeneratorTest {
     @InjectMocks
     private BookingCodeGenerator bookingCodeGenerator;
 
-    // ─────────────────────────────────────────────────────────────
-    // Format checks
-    // ─────────────────────────────────────────────────────────────
-
     @Test
-    @DisplayName("生成的预订码应为10位大写字母或1-9数字，不含0和小写字母")
+    @DisplayName("TC-BCG-01 | generateBookingReference | format: 10 uppercase letters or digits 1-9, no 0 or lowercase")
     void should_returnValidFormat_when_codeIsGenerated() {
         when(bookingReferenceRepository.findByReferenceNo(any())).thenReturn(Optional.empty());
         when(bookingReferenceRepository.save(any())).thenReturn(new BookingReference());
 
         String code = bookingCodeGenerator.generateBookingReference();
 
-        // [A-Z1-9]{10} 同时验证长度和字符集，TC 合一
         assertThat(code).matches("[A-Z1-9]{10}");
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // Uniqueness / retry behavior
-    // ─────────────────────────────────────────────────────────────
-
     @Test
-    @DisplayName("前两次生成的码已存在时，应重试直到生成唯一码")
+    @DisplayName("TC-BCG-02 | generateBookingReference | first two attempts are duplicates → retries until unique")
     void should_retryAndReturnUniqueCode_when_firstTwoCodesAreDuplicate() {
-        // First two calls return duplicate, third returns empty (unique)
+        // Retry until unique due to potential reference collision
         when(bookingReferenceRepository.findByReferenceNo(any()))
                 .thenReturn(Optional.of(new BookingReference()))
                 .thenReturn(Optional.of(new BookingReference()))
@@ -63,12 +54,8 @@ class BookingCodeGeneratorTest {
         verify(bookingReferenceRepository, times(3)).findByReferenceNo(any());
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // Persistence
-    // ─────────────────────────────────────────────────────────────
-
     @Test
-    @DisplayName("生成成功后应将预订码保存到数据库")
+    @DisplayName("TC-BCG-03 | generateBookingReference | unique code is persisted to DB")
     void should_saveCodeToDatabase_when_uniqueCodeIsGenerated() {
         when(bookingReferenceRepository.findByReferenceNo(any())).thenReturn(Optional.empty());
         when(bookingReferenceRepository.save(any())).thenReturn(new BookingReference());
@@ -79,30 +66,18 @@ class BookingCodeGeneratorTest {
                 .save(argThat(ref -> ref.getReferenceNo().equals(code)));
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // Bug documentation
-    // ─────────────────────────────────────────────────────────────
-
     @Test
-    @Disabled("⚠️ BUG: 当前实现是 check-then-act（先查再插），极端并发下 DB unique constraint 触发时" +
-              "会直接抛 DataIntegrityViolationException 而非 retry。" +
-              "推荐修复：改为 insert-then-retry — 直接 save()，捕获 DuplicateKeyException 后重试，" +
-              "省去一次 findByReferenceNo 查询，并真正依赖 DB 做唯一性保证。" +
-              "修复后删除此 @Disabled 并放开下方断言。")
-    @DisplayName("【BUG】insert 遇到 duplicate key 时应自动 retry，而非直接抛异常")
+    @Disabled("Bug: current implementation is check-then-act (findByReferenceNo before save). " +
+              "Under high concurrency, the DB unique constraint fires DataIntegrityViolationException instead of retrying. " +
+              "Fix: switch to insert-then-retry — call save() directly, catch DataIntegrityViolationException, and retry. " +
+              "This removes one DB round-trip and relies on the DB for uniqueness. Remove @Disabled after fix.")
+    @DisplayName("TC-BCG-04 | [Bug] duplicate key on insert should trigger retry, not throw")
     void should_retryOnInsert_when_duplicateKeyExceptionIsThrown() {
-        // [面试素材] check-then-act 的问题：
-        //   查询时 code 不存在 ≠ 插入时 code 不存在（并发窗口）。
-        //   更好的设计：直接 insert，依赖 DB unique constraint，
-        //   捕获 DuplicateKeyException 后 retry —— 减少一次 DB 查询，且并发安全。
-        //
-        // 修复步骤：
-        //   1. 去掉 isBookingReferenceExist() 的 do-while 检查
-        //   2. 直接 save()，catch DataIntegrityViolationException → 重试
-        //   3. 删除 @Disabled，放开下面的断言
+        // Bug: check-then-act has a race window — code absent at query time may be present at insert time.
+        // Better design: insert-then-retry removes the race and the extra SELECT.
 
-        // assertThatThrownBy 不适用于新设计（修复后应 retry 成功，而非抛异常）
-        // 修复后的断言示例：
+        // After fix: assertThatThrownBy is no longer applicable — the retry succeeds instead of throwing.
+        // Example assertions for the fixed implementation:
         // when(bookingReferenceRepository.save(any()))
         //         .thenThrow(new DataIntegrityViolationException("duplicate"))
         //         .thenReturn(new BookingReference());

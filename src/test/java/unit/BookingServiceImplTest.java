@@ -37,8 +37,15 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
-// Unit tests for BookingServiceImpl core validation logic.
-// No Spring context — all dependencies are mocked.
+/**
+ * Unit tests for {@link BookingServiceImpl}.
+ *
+ * <p>Covers: date validation, total-price calculation, happy-path booking creation,
+ * reference-number lookup, partial-update behaviour, and null-input guards.
+ *
+ * <p>All external dependencies (repositories, services) are mocked via Mockito;
+ * no Spring context is loaded.
+ */
 @ExtendWith(MockitoExtension.class)
 class BookingServiceImplTest {
 
@@ -71,23 +78,19 @@ class BookingServiceImplTest {
         testUser.setEmail("customer@hotel.com");
 
         validBookingDTO = new BookingDTO();
-        validBookingDTO.setRoomId(1L); // TODO: hardcoded roomId=1L, flaky risk — replace with dynamic test data
+        validBookingDTO.setRoomId(testRoom.getId());
         validBookingDTO.setCheckInDate(LocalDate.now().plusDays(1));
         validBookingDTO.setCheckOutDate(LocalDate.now().plusDays(3));
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // Date validation (等价类划分)
-    // ─────────────────────────────────────────────────────────────
-
     @Test
-    @DisplayName("TC-BS-01 | createBooking | checkOut < checkIn 抛出异常")
+    @DisplayName("TC-BS-01 | createBooking | checkOut < checkIn → throws")
     void checkOutBeforeCheckIn_shouldThrow() {
         validBookingDTO.setCheckInDate(LocalDate.now().plusDays(5));
         validBookingDTO.setCheckOutDate(LocalDate.now().plusDays(3));
 
         when(userService.getCurrentLoggedInUser()).thenReturn(testUser);
-        when(roomRepository.findByIdWithLock(1L)).thenReturn(Optional.of(testRoom)); // TODO: hardcoded roomId=1L, flaky risk — replace with dynamic test data
+        when(roomRepository.findByIdWithLock(testRoom.getId())).thenReturn(Optional.of(testRoom));
 
         assertThatThrownBy(() -> bookingService.createBooking(validBookingDTO))
                 .isInstanceOf(InvalidBookingStateAndDateException.class)
@@ -95,14 +98,14 @@ class BookingServiceImplTest {
     }
 
     @Test
-    @DisplayName("TC-BS-02 | createBooking | checkIn == checkOut 抛出异常")
+    @DisplayName("TC-BS-02 | createBooking | checkIn == checkOut → throws")
     void checkInSameAsCheckOut_shouldThrow() {
         LocalDate same = LocalDate.now().plusDays(2);
         validBookingDTO.setCheckInDate(same);
         validBookingDTO.setCheckOutDate(same);
 
         when(userService.getCurrentLoggedInUser()).thenReturn(testUser);
-        when(roomRepository.findByIdWithLock(1L)).thenReturn(Optional.of(testRoom)); // TODO: hardcoded roomId=1L, flaky risk — replace with dynamic test data
+        when(roomRepository.findByIdWithLock(testRoom.getId())).thenReturn(Optional.of(testRoom));
 
         assertThatThrownBy(() -> bookingService.createBooking(validBookingDTO))
                 .isInstanceOf(InvalidBookingStateAndDateException.class)
@@ -110,13 +113,13 @@ class BookingServiceImplTest {
     }
 
     @Test
-    @DisplayName("TC-BS-03 | createBooking | checkIn < today 抛出异常")
+    @DisplayName("TC-BS-03 | createBooking | checkIn in the past → throws")
     void checkInBeforeToday_shouldThrow() {
         validBookingDTO.setCheckInDate(LocalDate.now().minusDays(1));
         validBookingDTO.setCheckOutDate(LocalDate.now().plusDays(1));
 
         when(userService.getCurrentLoggedInUser()).thenReturn(testUser);
-        when(roomRepository.findByIdWithLock(1L)).thenReturn(Optional.of(testRoom)); // TODO: hardcoded roomId=1L, flaky risk — replace with dynamic test data
+        when(roomRepository.findByIdWithLock(testRoom.getId())).thenReturn(Optional.of(testRoom));
 
         assertThatThrownBy(() -> bookingService.createBooking(validBookingDTO))
                 .isInstanceOf(InvalidBookingStateAndDateException.class)
@@ -124,10 +127,10 @@ class BookingServiceImplTest {
     }
 
     @Test
-    @DisplayName("TC-BS-04 | createBooking | 房间不可用抛出异常")
+    @DisplayName("TC-BS-04 | createBooking | room not available → throws")
     void roomNotAvailable_shouldThrow() {
         when(userService.getCurrentLoggedInUser()).thenReturn(testUser);
-        when(roomRepository.findByIdWithLock(1L)).thenReturn(Optional.of(testRoom)); // TODO: hardcoded roomId=1L, flaky risk — replace with dynamic test data
+        when(roomRepository.findByIdWithLock(testRoom.getId())).thenReturn(Optional.of(testRoom));
         when(bookingRepository.isRoomAvailable(any(), any(), any())).thenReturn(false);
 
         assertThatThrownBy(() -> bookingService.createBooking(validBookingDTO))
@@ -136,7 +139,7 @@ class BookingServiceImplTest {
     }
 
     @Test
-    @DisplayName("TC-BS-05 | createBooking | roomId not found 抛出 NotFoundException")
+    @DisplayName("TC-BS-05 | createBooking | roomId not found → throws, no save")
     void roomNotFound_shouldThrow() {
         validBookingDTO.setRoomId(999L);
         when(userService.getCurrentLoggedInUser()).thenReturn(testUser);
@@ -149,16 +152,12 @@ class BookingServiceImplTest {
         verify(bookingRepository, never()).save(any());
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // Total price calculation (边界值 + BigDecimal 精度)
-    // ─────────────────────────────────────────────────────────────
-
     @ParameterizedTest(name = "{0} nights × ${1}/night = ${2}")
     @CsvSource({
-        "1,  100.00, 100.00",   // minimum stay
-        "2,  100.00, 200.00",   // standard stay
-        "30, 100.00, 3000.00",  // long stay
-        "3,   99.99, 299.97",   // decimal price — BigDecimal precision
+        "1,  100.00, 100.00",
+        "2,  100.00, 200.00",
+        "30, 100.00, 3000.00",
+        "3,   99.99, 299.97",
     })
     @DisplayName("TC-BS-06 | createBooking | totalPrice = nights × pricePerNight")
     void totalPrice_shouldEqual_nightsTimesPrice(int nights, String pricePerNight, String expectedTotal) {
@@ -167,7 +166,7 @@ class BookingServiceImplTest {
         validBookingDTO.setCheckOutDate(LocalDate.now().plusDays(1 + nights));
 
         when(userService.getCurrentLoggedInUser()).thenReturn(testUser);
-        when(roomRepository.findByIdWithLock(1L)).thenReturn(Optional.of(testRoom)); // TODO: hardcoded roomId=1L, flaky risk — replace with dynamic test data
+        when(roomRepository.findByIdWithLock(testRoom.getId())).thenReturn(Optional.of(testRoom));
         when(bookingRepository.isRoomAvailable(any(), any(), any())).thenReturn(true);
         when(bookingCodeGenerator.generateBookingReference()).thenReturn("ABCDEFGHIJ");
         when(bookingRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
@@ -184,18 +183,14 @@ class BookingServiceImplTest {
                 .isEqualByComparingTo(new BigDecimal(expectedTotal));
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // Happy path — valid booking saves with correct initial state
-    // ─────────────────────────────────────────────────────────────
-
     @Test
-    @DisplayName("TC-BS-07 | createBooking | 合法订单保存，初始状态 BOOKED/PENDING，触发 sendEmail")
+    @DisplayName("TC-BS-07 | createBooking | valid input → saved with BOOKED/PENDING, sends email")
     void validBooking_shouldSaveAndReturn200() {
         validBookingDTO.setCheckInDate(LocalDate.now().plusDays(1));
         validBookingDTO.setCheckOutDate(LocalDate.now().plusDays(2));
 
         when(userService.getCurrentLoggedInUser()).thenReturn(testUser);
-        when(roomRepository.findByIdWithLock(1L)).thenReturn(Optional.of(testRoom)); // TODO: hardcoded roomId=1L, flaky risk — replace with dynamic test data
+        when(roomRepository.findByIdWithLock(testRoom.getId())).thenReturn(Optional.of(testRoom));
         when(bookingRepository.isRoomAvailable(any(), any(), any())).thenReturn(true);
         when(bookingCodeGenerator.generateBookingReference()).thenReturn("ABCDEFGHIJ");
         when(bookingRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
@@ -225,12 +220,8 @@ class BookingServiceImplTest {
         assertThat(result.getTotalPrice()).isEqualByComparingTo(new BigDecimal("100.00"));
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // findBookingByReferenceNo
-    // ─────────────────────────────────────────────────────────────
-
     @Test
-    @DisplayName("TC-BS-08 | findBookingByReferenceNo | 有效 reference 返回完整 BookingDTO 字段")
+    @DisplayName("TC-BS-08 | findBookingByReferenceNo | valid reference → returns full BookingDTO")
     void getBookingByReference_validRef() {
         Booking booking = new Booking();
         booking.setBookingReference("ABCDEFGHIJ");
@@ -266,7 +257,7 @@ class BookingServiceImplTest {
     }
 
     @Test
-    @DisplayName("TC-BS-09 | findBookingByReferenceNo | 无效 reference 抛出 NotFoundException")
+    @DisplayName("TC-BS-09 | findBookingByReferenceNo | unknown reference → throws")
     void getBookingByReference_notFound() {
         when(bookingRepository.findByBookingReference("INVALID000")).thenReturn(Optional.empty());
 
@@ -275,12 +266,8 @@ class BookingServiceImplTest {
                 .hasMessageMatching("(?i).*not.?found.*");
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // updateBooking (决策表：部分更新)
-    // ─────────────────────────────────────────────────────────────
-
     @Test
-    @DisplayName("TC-BS-10 | updateBooking | id=null 抛出 NotFoundException，不触发 save")
+    @DisplayName("TC-BS-10 | updateBooking | id=null → throws, no save")
     void updateBooking_nullId_throwsNotFoundException() {
         BookingDTO dto = new BookingDTO();
         dto.setId(null);
@@ -294,7 +281,7 @@ class BookingServiceImplTest {
     }
 
     @Test
-    @DisplayName("TC-BS-11 | updateBooking | id not found 抛出 NotFoundException，不触发 save")
+    @DisplayName("TC-BS-11 | updateBooking | id not found → throws, no save")
     void updateBooking_idNotFound_throwsNotFoundException() {
         BookingDTO dto = new BookingDTO();
         dto.setId(999L);
@@ -310,7 +297,7 @@ class BookingServiceImplTest {
     }
 
     @Test
-    @DisplayName("TC-BS-12 | updateBooking | 只更新 bookingStatus，paymentStatus 原值保留")
+    @DisplayName("TC-BS-12 | updateBooking | bookingStatus only — paymentStatus unchanged")
     void updateBooking_onlyBookingStatus_paymentStatusUnchanged() {
         Booking existing = new Booking();
         existing.setId(1L);
@@ -320,7 +307,6 @@ class BookingServiceImplTest {
         BookingDTO dto = new BookingDTO();
         dto.setId(1L);
         dto.setBookingStatus(BookingStatus.CANCELLED);
-        // paymentStatus intentionally null
 
         when(bookingRepository.findById(1L)).thenReturn(Optional.of(existing));
         when(bookingRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
@@ -332,85 +318,11 @@ class BookingServiceImplTest {
         ArgumentCaptor<Booking> captor = ArgumentCaptor.forClass(Booking.class);
         verify(bookingRepository).save(captor.capture());
         assertThat(captor.getValue().getBookingStatus()).isEqualTo(BookingStatus.CANCELLED);
-        assertThat(captor.getValue().getPaymentStatus()).isEqualTo(PaymentStatus.COMPLETED); // original preserved
-    }
-
-    // ─────────────────────────────────────────────────────────────
-    // Null parameter validation
-    // ─────────────────────────────────────────────────────────────
-
-    @Test
-    @DisplayName("TC-BS-14 | createBooking | roomId = null → NotFoundException，不触发 save")
-    void should_throw_when_roomId_is_null() {
-        validBookingDTO.setRoomId(null);
-        when(userService.getCurrentLoggedInUser()).thenReturn(testUser);
-
-        assertThatThrownBy(() -> bookingService.createBooking(validBookingDTO))
-                .isInstanceOf(NotFoundException.class)
-                .hasMessageContaining("roomId");
-
-        verify(bookingRepository, never()).save(any());
+        assertThat(captor.getValue().getPaymentStatus()).isEqualTo(PaymentStatus.COMPLETED);
     }
 
     @Test
-    @DisplayName("TC-BS-15 | createBooking | room.pricePerNight = null → NullPointerException（源码未校验 Room 数据完整性）")
-    void should_throw_when_price_is_null() {
-        // [面试素材] Bug: calculateTotalPrice 直接调用 pricePerNight.multiply()，
-        // 若 Room 数据不完整（pricePerNight=null），抛 NPE 而非业务异常。
-        // 推荐修复：在 calculateTotalPrice 或 addRoom 时校验 pricePerNight 非 null。
-        testRoom.setPricePerNight(null);
-
-        when(userService.getCurrentLoggedInUser()).thenReturn(testUser);
-        when(roomRepository.findByIdWithLock(1L)).thenReturn(Optional.of(testRoom)); // TODO: hardcoded roomId=1L, flaky risk — replace with dynamic test data // TODO: hardcoded roomId=1L, flaky risk — replace with dynamic test data
-        when(bookingRepository.isRoomAvailable(any(), any(), any())).thenReturn(true);
-
-        assertThatThrownBy(() -> bookingService.createBooking(validBookingDTO))
-                .isInstanceOf(NullPointerException.class);
-
-        verify(bookingRepository, never()).save(any());
-    }
-
-    @Test
-    @DisplayName("TC-BS-16 | createBooking | checkInDate = null → InvalidBookingStateAndDateException")
-    void should_throw_when_checkInDate_is_null() {
-        validBookingDTO.setCheckInDate(null);
-
-        when(userService.getCurrentLoggedInUser()).thenReturn(testUser);
-        when(roomRepository.findByIdWithLock(1L)).thenReturn(Optional.of(testRoom)); // TODO: hardcoded roomId=1L, flaky risk — replace with dynamic test data // TODO: hardcoded roomId=1L, flaky risk — replace with dynamic test data
-
-        assertThatThrownBy(() -> bookingService.createBooking(validBookingDTO))
-                .isInstanceOf(InvalidBookingStateAndDateException.class)
-                .hasMessageContaining("required");
-
-        verify(bookingRepository, never()).save(any());
-    }
-
-    @Test
-    @DisplayName("TC-BS-17 | createBooking | checkOutDate = null → InvalidBookingStateAndDateException")
-    void should_throw_when_checkOutDate_is_null() {
-        validBookingDTO.setCheckOutDate(null);
-
-        when(userService.getCurrentLoggedInUser()).thenReturn(testUser);
-        when(roomRepository.findByIdWithLock(1L)).thenReturn(Optional.of(testRoom)); // TODO: hardcoded roomId=1L, flaky risk — replace with dynamic test data // TODO: hardcoded roomId=1L, flaky risk — replace with dynamic test data
-
-        assertThatThrownBy(() -> bookingService.createBooking(validBookingDTO))
-                .isInstanceOf(InvalidBookingStateAndDateException.class)
-                .hasMessageContaining("required");
-
-        verify(bookingRepository, never()).save(any());
-    }
-
-    @Test
-    @DisplayName("TC-BS-18 | findBookingByReferenceNo | referenceNo = null → NotFoundException")
-    void should_throw_when_referenceNumber_is_null() {
-        when(bookingRepository.findByBookingReference(null)).thenReturn(Optional.empty());
-
-        assertThatThrownBy(() -> bookingService.findBookingByReferenceNo(null))
-                .isInstanceOf(NotFoundException.class);
-    }
-
-    @Test
-    @DisplayName("TC-BS-13 | updateBooking | 只更新 paymentStatus，bookingStatus 原值保留")
+    @DisplayName("TC-BS-13 | updateBooking | paymentStatus only — bookingStatus unchanged")
     void updateBooking_onlyPaymentStatus_bookingStatusUnchanged() {
         Booking existing = new Booking();
         existing.setId(1L);
@@ -420,7 +332,6 @@ class BookingServiceImplTest {
         BookingDTO dto = new BookingDTO();
         dto.setId(1L);
         dto.setPaymentStatus(PaymentStatus.COMPLETED);
-        // bookingStatus intentionally null
 
         when(bookingRepository.findById(1L)).thenReturn(Optional.of(existing));
         when(bookingRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
@@ -428,7 +339,82 @@ class BookingServiceImplTest {
         Response response = bookingService.updateBooking(dto);
 
         assertThat(response.getStatus()).isEqualTo(200);
-        assertThat(existing.getBookingStatus()).isEqualTo(BookingStatus.CHECKED_IN);  // original preserved
-        assertThat(existing.getPaymentStatus()).isEqualTo(PaymentStatus.COMPLETED);
+
+        ArgumentCaptor<Booking> captor = ArgumentCaptor.forClass(Booking.class);
+        verify(bookingRepository).save(captor.capture());
+        assertThat(captor.getValue().getBookingStatus()).isEqualTo(BookingStatus.CHECKED_IN);
+        assertThat(captor.getValue().getPaymentStatus()).isEqualTo(PaymentStatus.COMPLETED);
     }
+
+    @Test
+    @DisplayName("TC-BS-14 | createBooking | roomId=null → throws, no save")
+    void should_throw_when_roomId_is_null() {
+        validBookingDTO.setRoomId(null);
+        when(userService.getCurrentLoggedInUser()).thenReturn(testUser);
+        when(roomRepository.findByIdWithLock(null)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> bookingService.createBooking(validBookingDTO))
+                .isInstanceOf(NotFoundException.class)
+                .hasMessageContaining("roomId is required");
+
+        verify(bookingRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("TC-BS-15 | createBooking | [Bug] pricePerNight=null → NPE, no domain exception")
+    void should_throw_when_price_is_null() {
+        // Bug: calculateTotalPrice calls pricePerNight.multiply() without a null guard.
+        // If room data is incomplete, an NPE is thrown instead of a domain exception.
+        // Fix: validate pricePerNight != null in addRoom() or at the start of calculateTotalPrice().
+        testRoom.setPricePerNight(null);
+
+        when(userService.getCurrentLoggedInUser()).thenReturn(testUser);
+        when(roomRepository.findByIdWithLock(testRoom.getId())).thenReturn(Optional.of(testRoom));
+        when(bookingRepository.isRoomAvailable(any(), any(), any())).thenReturn(true);
+
+        assertThatThrownBy(() -> bookingService.createBooking(validBookingDTO))
+                .isInstanceOf(NullPointerException.class);
+
+        verify(bookingRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("TC-BS-16 | createBooking | checkInDate=null → throws")
+    void should_throw_when_checkInDate_is_null() {
+        validBookingDTO.setCheckInDate(null);
+
+        when(userService.getCurrentLoggedInUser()).thenReturn(testUser);
+        when(roomRepository.findByIdWithLock(testRoom.getId())).thenReturn(Optional.of(testRoom));
+
+        assertThatThrownBy(() -> bookingService.createBooking(validBookingDTO))
+                .isInstanceOf(InvalidBookingStateAndDateException.class)
+                .hasMessageContaining("required");
+
+        verify(bookingRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("TC-BS-17 | createBooking | checkOutDate=null → throws")
+    void should_throw_when_checkOutDate_is_null() {
+        validBookingDTO.setCheckOutDate(null);
+
+        when(userService.getCurrentLoggedInUser()).thenReturn(testUser);
+        when(roomRepository.findByIdWithLock(testRoom.getId())).thenReturn(Optional.of(testRoom));
+
+        assertThatThrownBy(() -> bookingService.createBooking(validBookingDTO))
+                .isInstanceOf(InvalidBookingStateAndDateException.class)
+                .hasMessageContaining("required");
+
+        verify(bookingRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("TC-BS-18 | findBookingByReferenceNo | referenceNo=null → throws")
+    void should_throw_when_referenceNumber_is_null() {
+        when(bookingRepository.findByBookingReference(null)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> bookingService.findBookingByReferenceNo(null))
+                .isInstanceOf(NotFoundException.class);
+    }
+
 }

@@ -26,7 +26,7 @@ import static org.hamcrest.Matchers.*;
  *   A room with roomId=SEED_ROOM_ID must exist in the DB before running.
  *   Adjust SEED_ROOM_ID to match a seeded room in your test environment.
  */
-@DisplayName("📅 Booking API Tests")
+@DisplayName("Booking API Tests")
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class BookingApiTest extends BaseApiTest {
 
@@ -37,14 +37,9 @@ class BookingApiTest extends BaseApiTest {
     private static String createdBookingRef;
     private static Long   createdBookingId;
 
-    // ═══════════════════════════════════════════════════════════════
-    // createBooking
-    // ═══════════════════════════════════════════════════════════════
-
     @Test @Order(1)
-    @DisplayName("TC-B-01 | createBooking | 成功创建订单，验证价格与 reference 字段")
+    @DisplayName("TC-B-01 | createBooking | success — returns booking with price and reference")
     void createBooking_success() {
-        // 2-night stay: pricePerNight × 2 should equal totalPrice
         Map<String, Object> body = bookingPayload(SEED_ROOM_ID, tomorrow(), inDays(3));
 
         createdBookingRef = given()
@@ -56,16 +51,14 @@ class BookingApiTest extends BaseApiTest {
             .statusCode(200)
             .body("status",  equalTo(200))
             .body("message", containsStringIgnoringCase("success"))
-            // booking object must be returned
             .body("booking", notNullValue())
-            // bookingReference must be a non-empty string
             .body("booking.bookingReference", notNullValue())
             .body("booking.bookingReference", not(emptyString()))
             .extract().path("booking.bookingReference");
     }
 
     @Test @Order(2)
-    @DisplayName("TC-B-02 | createBooking | 房间 ID 不存在，抛出 NotFoundException")
+    @DisplayName("TC-B-02 | createBooking | room not found → 404")
     void createBooking_fail_roomNotFound() {
         Map<String, Object> body = bookingPayload(999999L, tomorrow(), inDays(3));
 
@@ -80,7 +73,7 @@ class BookingApiTest extends BaseApiTest {
     }
 
     @Test @Order(3)
-    @DisplayName("TC-B-03 | createBooking | 入住日期为昨天，抛出 InvalidBookingStateAndDateException")
+    @DisplayName("TC-B-03 | createBooking | checkIn in the past → 400/422")
     void createBooking_fail_checkInBeforeToday() {
         Map<String, Object> body = bookingPayload(SEED_ROOM_ID, yesterday(), tomorrow());
 
@@ -95,7 +88,7 @@ class BookingApiTest extends BaseApiTest {
     }
 
     @Test @Order(4)
-    @DisplayName("TC-B-04 | createBooking | checkIn == checkOut，抛出 InvalidBookingStateAndDateException")
+    @DisplayName("TC-B-04 | createBooking | checkIn == checkOut → 400/422")
     void createBooking_fail_sameDate() {
         Map<String, Object> body = bookingPayload(SEED_ROOM_ID, tomorrow(), tomorrow());
 
@@ -110,7 +103,7 @@ class BookingApiTest extends BaseApiTest {
     }
 
     @Test @Order(5)
-    @DisplayName("TC-B-05 | createBooking | 🐛 BUG: checkOut < checkIn 时校验不触发（文档测试）")
+    @DisplayName("TC-B-05 | createBooking | [Bug] checkOut before checkIn — validation not triggered")
     void createBooking_bug_checkOutBeforeCheckIn() {
         // checkOut (tomorrow) is BEFORE checkIn (inDays(3))
         //
@@ -138,11 +131,9 @@ class BookingApiTest extends BaseApiTest {
     }
 
     @Test @Order(6)
-    @DisplayName("TC-B-06 | createBooking | 选定日期已被预订，抛出 InvalidBookingStateAndDateException")
+    @DisplayName("TC-B-06 | createBooking | room not available for selected dates → 400/409/422")
     void createBooking_fail_roomNotAvailable() {
         // TODO: test order dependency — this test relies on data created by a previous test, refactor to use @BeforeEach or independent fixtures
-        // TC-B-01 already booked tomorrow → inDays(3) for SEED_ROOM_ID.
-        // Attempt the exact same dates → should be rejected.
         Map<String, Object> body = bookingPayload(SEED_ROOM_ID, tomorrow(), inDays(3));
 
         given()
@@ -156,7 +147,7 @@ class BookingApiTest extends BaseApiTest {
     }
 
     @Test @Order(7)
-    @DisplayName("TC-B-07 | createBooking | 【补充】新订单状态 = BOOKED，支付状态 = PENDING")
+    @DisplayName("TC-B-07 | createBooking | new booking has status BOOKED and payment PENDING")
     void createBooking_newBooking_hasCorrectInitialStatus() {
         // Use a different date range to avoid conflict with TC-B-01
         Map<String, Object> body = bookingPayload(SEED_ROOM_ID, inDays(10), inDays(12));
@@ -170,7 +161,6 @@ class BookingApiTest extends BaseApiTest {
             .statusCode(200)
             .extract().path("booking.bookingReference");
 
-        // Fetch the booking and verify statuses
         given()
             .spec(customerSpec)
         .when()
@@ -181,12 +171,8 @@ class BookingApiTest extends BaseApiTest {
             .body("booking.paymentStatus",  equalTo("PENDING"));
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    // createBooking — 入参校验
-    // ═══════════════════════════════════════════════════════════════
-
     @Test @Order(8)
-    @DisplayName("TC-B-08 | createBooking | 缺少 roomId，不应返回 500")
+    @DisplayName("TC-B-08 | createBooking | missing roomId → not 500")
     void createBooking_missingRoomId_doesNotReturn500() {
         Map<String, Object> body = new HashMap<>();
         body.put("checkInDate",  inDays(5));
@@ -198,7 +184,7 @@ class BookingApiTest extends BaseApiTest {
     }
 
     @Test @Order(9)
-    @DisplayName("TC-B-09 | createBooking | 缺少 checkInDate，不应返回 500")
+    @DisplayName("TC-B-09 | createBooking | missing checkInDate → not 500")
     void createBooking_missingCheckIn_doesNotReturn500() {
         Map<String, Object> body = new HashMap<>();
         body.put("roomId",       1L);
@@ -210,7 +196,7 @@ class BookingApiTest extends BaseApiTest {
     }
 
     @Test @Order(10)
-    @DisplayName("TC-B-10 | createBooking | 日期格式非法（非 yyyy-MM-dd），不应返回 500")
+    @DisplayName("TC-B-10 | createBooking | invalid date format → not 500")
     void createBooking_invalidDateFormat_doesNotReturn500() {
         Map<String, Object> body = new HashMap<>();
         body.put("roomId",       1L);
@@ -222,12 +208,8 @@ class BookingApiTest extends BaseApiTest {
             .then().statusCode(not(500));
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    // getAllBookings
-    // ═══════════════════════════════════════════════════════════════
-
     @Test @Order(11)
-    @DisplayName("TC-B-11 | getAllBookings | 【补充】返回列表中每条记录的 user 和 room 均为 null")
+    @DisplayName("TC-B-11 | getAllBookings | each booking has user and room as null")
     void getAllBookings_bookingListHasNullUserAndRoom() {
         given()
             .spec(adminSpec)
@@ -237,17 +219,12 @@ class BookingApiTest extends BaseApiTest {
             .statusCode(200)
             .body("status",   equalTo(200))
             .body("bookings", not(empty()))
-            // Every element in the list should have user=null, room=null
             .body("bookings.user", everyItem(nullValue()))
             .body("bookings.room", everyItem(nullValue()));
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    // findBookingByReferenceNo
-    // ═══════════════════════════════════════════════════════════════
-
     @Test @Order(12)
-    @DisplayName("TC-B-12 | findBookingByReferenceNo | 用有效 reference 查询，返回 BookingDTO")
+    @DisplayName("TC-B-12 | findBookingByReferenceNo | valid reference → returns booking")
     void findBookingByReferenceNo_success() {
         // TODO: test order dependency — this test relies on data created by a previous test, refactor to use @BeforeEach or independent fixtures
         Assumptions.assumeTrue(createdBookingRef != null,
@@ -269,7 +246,7 @@ class BookingApiTest extends BaseApiTest {
     }
 
     @Test @Order(13)
-    @DisplayName("TC-B-13 | findBookingByReferenceNo | reference 不存在，抛出 NotFoundException")
+    @DisplayName("TC-B-13 | findBookingByReferenceNo | unknown reference → 400/404")
     void findBookingByReferenceNo_notFound() {
         given()
             .spec(customerSpec)
@@ -280,12 +257,8 @@ class BookingApiTest extends BaseApiTest {
             .body("message", containsStringIgnoringCase("not found"));
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    // updateBooking
-    // ═══════════════════════════════════════════════════════════════
-
     @Test @Order(14)
-    @DisplayName("TC-B-14 | updateBooking | 成功更新 bookingStatus=CHECKED_IN, paymentStatus=PAID")
+    @DisplayName("TC-B-14 | updateBooking | update both statuses → persisted")
     void updateBooking_success_updateBothStatuses() {
         // TODO: test order dependency — this test relies on data created by a previous test, refactor to use @BeforeEach or independent fixtures
         Assumptions.assumeTrue(createdBookingId != null,
@@ -305,7 +278,6 @@ class BookingApiTest extends BaseApiTest {
             .body("status",  equalTo(200))
             .body("message", containsStringIgnoringCase("updated"));
 
-        // Verify changes persisted
         given().spec(adminSpec).when()
                .get("/bookings/{ref}", createdBookingRef)
                .then()
@@ -314,7 +286,7 @@ class BookingApiTest extends BaseApiTest {
     }
 
     @Test @Order(15)
-    @DisplayName("TC-B-15 | updateBooking | 【补充】只传 bookingStatus，paymentStatus 不应被覆盖")
+    @DisplayName("TC-B-15 | updateBooking | bookingStatus only — paymentStatus unchanged")
     void updateBooking_onlyBookingStatus_paymentStatusUnchanged() {
         // TODO: test order dependency — this test relies on data created by a previous test, refactor to use @BeforeEach or independent fixtures
         Assumptions.assumeTrue(createdBookingId != null,
@@ -340,7 +312,7 @@ class BookingApiTest extends BaseApiTest {
     }
 
     @Test @Order(16)
-    @DisplayName("TC-B-16 | updateBooking | 【补充】只传 paymentStatus，bookingStatus 不应被覆盖")
+    @DisplayName("TC-B-16 | updateBooking | paymentStatus only — bookingStatus unchanged")
     void updateBooking_onlyPaymentStatus_bookingStatusUnchanged() {
         // TODO: test order dependency — this test relies on data created by a previous test, refactor to use @BeforeEach or independent fixtures
         Assumptions.assumeTrue(createdBookingId != null,
@@ -366,7 +338,7 @@ class BookingApiTest extends BaseApiTest {
     }
 
     @Test @Order(17)
-    @DisplayName("TC-B-17 | updateBooking | id=null，抛出 NotFoundException('Booking id is required')")
+    @DisplayName("TC-B-17 | updateBooking | id=null → 400/404")
     void updateBooking_fail_nullId() {
         Map<String, Object> updateBody = new HashMap<>();
         updateBody.put("bookingStatus", "CANCELLED");
@@ -383,7 +355,7 @@ class BookingApiTest extends BaseApiTest {
     }
 
     @Test @Order(18)
-    @DisplayName("TC-B-18 | updateBooking | ID=999999 不存在，抛出 NotFoundException")
+    @DisplayName("TC-B-18 | updateBooking | id not found → 400/404")
     void updateBooking_fail_idNotFound() {
         Map<String, Object> updateBody = new HashMap<>();
         updateBody.put("id",            999999L);

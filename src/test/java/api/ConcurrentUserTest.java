@@ -20,7 +20,7 @@ import static org.junit.jupiter.api.Assertions.*;
  *
  * Isolation: the successfully registered account is deleted in @AfterAll.
  */
-@DisplayName("⚡ Concurrent User Tests")
+@DisplayName("Concurrent User Tests")
 class ConcurrentUserTest extends BaseApiTest {
 
     private static final int THREAD_COUNT    = 5;
@@ -41,14 +41,12 @@ class ConcurrentUserTest extends BaseApiTest {
         registeredPassword = null;
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    // TC-CON-U-01  同一邮箱并发注册，只能成功创建1个账号
+    // TC-CON-U-01: concurrent registrations with the same email — only one account created
     //
-    // 如果后端没有数据库唯一约束，多个请求可能同时通过校验并
-    // 各自 INSERT，导致同一邮箱存在多条记录 —— 这是安全漏洞。
-    // ═══════════════════════════════════════════════════════════════
+    // Without a DB unique constraint, multiple threads can pass the email-exists
+    // check simultaneously and each INSERT a row — duplicate accounts = security bug.
     @Test
-    @DisplayName("TC-CON-U-01 | register | 同一邮箱并发注册，只有1个账号被创建")
+    @DisplayName("TC-CON-U-01 | register | concurrent same-email registrations — only 1 account created")
     void concurrentRegister_sameEmail_onlyOneAccountCreated() throws InterruptedException {
         registeredEmail    = "concurrent_" + System.currentTimeMillis() + "@hotel.com";
         registeredPassword = "ConPass1234!";

@@ -28,7 +28,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * Isolation: all test users created here are deleted in @AfterAll.
  * Date offsets are seeded per-run to avoid booking conflicts across runs.
  */
-@DisplayName("⚡ Concurrent Booking Tests")
+@DisplayName("Concurrent Booking Tests")
 class ConcurrentBookingTest extends BaseApiTest {
 
     // Resolved in @BeforeAll after RestAssured is configured — not a static initializer
@@ -58,11 +58,9 @@ class ConcurrentBookingTest extends BaseApiTest {
         createdTokens.clear();
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    // TC-CON-01  同一房间同一日期，10个用户并发抢订，只能1个成功
-    // ═══════════════════════════════════════════════════════════════
+    // TC-CON-01: 10 concurrent users booking the same room — only one succeeds
     @Test
-    @DisplayName("TC-CON-01 | createBooking | 10个并发请求抢同一房间，只有1个成功（幂等性验证）")
+    @DisplayName("TC-CON-01 | createBooking | 10 concurrent requests for same room — only 1 succeeds")
     void concurrentBooking_sameRoomSameDates_onlyOneSucceeds() throws InterruptedException {
         String checkIn  = inDays(DATE_BASE);
         String checkOut = inDays(DATE_BASE + 2);
@@ -74,7 +72,7 @@ class ConcurrentBookingTest extends BaseApiTest {
         AtomicInteger successCount = new AtomicInteger(0);
         AtomicInteger failCount    = new AtomicInteger(0);
         List<Integer> statusCodes  = new CopyOnWriteArrayList<>();
-        List<Integer> serverErrors = new CopyOnWriteArrayList<>(); // 5xx は別途記録
+        List<Integer> serverErrors = new CopyOnWriteArrayList<>(); // 5xx responses tracked separately — race condition indicator
 
         // Register THREAD_COUNT unique users and pre-fetch their tokens
         List<String> tokens = new ArrayList<>();
@@ -107,7 +105,7 @@ class ConcurrentBookingTest extends BaseApiTest {
                             .extract().statusCode();
                     statusCodes.add(status);
                     if (status == 200)       successCount.incrementAndGet();
-                    else if (status >= 500)  serverErrors.add(status);  // レース条件バグを検出
+                    else if (status >= 500)  serverErrors.add(status);  // 5xx = race condition bug
                     else                     failCount.incrementAndGet();
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
@@ -133,11 +131,9 @@ class ConcurrentBookingTest extends BaseApiTest {
                 "Expected " + (THREAD_COUNT - 1) + " failed bookings, but got: " + failCount.get());
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    // TC-CON-02  同一用户重复提交同一订单（双击/网络重试场景）
-    // ═══════════════════════════════════════════════════════════════
+    // TC-CON-02: same user submits duplicate booking (double-click / network retry scenario)
     @Test
-    @DisplayName("TC-CON-02 | createBooking | 同一用户并发重复提交，只有1个订单被创建")
+    @DisplayName("TC-CON-02 | createBooking | same user submits duplicate request — only 1 booking created")
     void concurrentBooking_sameUserDuplicateSubmit_onlyOneCreated() throws InterruptedException {
         String checkIn  = inDays(DATE_BASE + 10);
         String checkOut = inDays(DATE_BASE + 12);

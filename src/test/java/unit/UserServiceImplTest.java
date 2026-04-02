@@ -34,6 +34,15 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
+/**
+ * Unit tests for {@link UserServiceImpl}.
+ *
+ * <p>Covers: login, user registration (including privilege-escalation bug), account update
+ * (partial-field, password encoding rules, invalid email bug), and account deletion.
+ *
+ * <p>Spring Security context is manually set in {@code @BeforeEach} to simulate an
+ * authenticated user; all repositories and encoders are mocked via Mockito.
+ */
 @ExtendWith(MockitoExtension.class)
 @DisplayName("UserServiceImpl Unit Tests")
 class UserServiceImplTest {
@@ -51,7 +60,6 @@ class UserServiceImplTest {
 
     @BeforeEach
     void setUp() {
-        // Set up Spring Security context so getCurrentLoggedInUser() works
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(
                         "customer@hotel.com", null, Collections.emptyList()));
@@ -72,10 +80,8 @@ class UserServiceImplTest {
         SecurityContextHolder.clearContext();
     }
 
-    // ── loginUser ─────────────────────────────────────────────────────────────
-
     @Test
-    @DisplayName("TC-US-01 | loginUser | email & password 均匹配 → 返回 200、token、正确 role")
+    @DisplayName("TC-US-01 | loginUser | valid credentials → 200 with token and role")
     void loginUser_validCredentials_returnsTokenAndRole() {
         existingUser.setRole(UserRole.CUSTOMER);
 
@@ -95,8 +101,6 @@ class UserServiceImplTest {
         verify(jwtUtils, times(1)).generateToken("customer@hotel.com");
     }
 
-    // ── registerUser ──────────────────────────────────────────────────────────
-
     @Test
     @DisplayName("TC-US-02 | registerUser | no role in request → defaults to CUSTOMER")
     void registerUser_success_roleIsCustomer() {
@@ -107,7 +111,6 @@ class UserServiceImplTest {
         req.setEmail("normal@hotel.com");
         req.setPassword("Normal1234!");
         req.setPhoneNumber("09000000001");
-        // role intentionally NOT set → should default to CUSTOMER
 
         when(passwordEncoder.encode(anyString())).thenReturn("$2a$encoded");
 
@@ -146,9 +149,7 @@ class UserServiceImplTest {
         assertThat(saved.getRole()).isIn(UserRole.ADMIN, UserRole.CUSTOMER);
     }
 
-    // ── updateOwnAccount ──────────────────────────────────────────────────────
     // Rule: if password is null or empty, skip encode and leave existing password unchanged
-
     @Test
     @DisplayName("TC-US-04 | updateOwnAccount | only firstName updated, other fields unchanged")
     void updateOwnAccount_onlyFirstName_otherFieldsUnchanged() {
@@ -158,10 +159,10 @@ class UserServiceImplTest {
         userService.updateOwnAccount(dto);
 
         assertThat(existingUser.getFirstName()).isEqualTo("Updated");
-        assertThat(existingUser.getLastName()).isEqualTo("User");            // unchanged
-        assertThat(existingUser.getEmail()).isEqualTo("customer@hotel.com"); // unchanged
-        assertThat(existingUser.getPassword()).isEqualTo("$2a$encoded_original"); // unchanged
-        assertThat(existingUser.getPhoneNumber()).isNull();                        // unchanged
+        assertThat(existingUser.getLastName()).isEqualTo("User");
+        assertThat(existingUser.getEmail()).isEqualTo("customer@hotel.com");
+        assertThat(existingUser.getPassword()).isEqualTo("$2a$encoded_original");
+        assertThat(existingUser.getPhoneNumber()).isNull();
         verify(passwordEncoder, never()).encode(any());
         verify(userRepository, times(1)).save(existingUser);
     }
@@ -209,32 +210,31 @@ class UserServiceImplTest {
     }
 
     @Test
-    @DisplayName("TC-US-08 | updateOwnAccount | [Bug] email 格式非法时 Service 层不校验，直接写入并调用 save")
+    @DisplayName("TC-US-08 | updateOwnAccount | [Bug] invalid email format accepted — no validation in service")
     void updateOwnAccount_invalidEmailFormat_noValidationBug() {
-        // [面试素材] Bug: UserDTO.email 无 @Email 注解，UserServiceImpl 也无格式校验，
-        // 任意字符串（如 "not-an-email"）都能通过 Service 层写入 existingUser 并被 save()。
-        // 正确做法：UserDTO 加 @Email + @Valid，在 Controller 层拦截，返回 400。
+        // Bug: UserDTO.email has no @Email constraint and UserServiceImpl performs no format check.
+        // Any string (e.g. "not-an-email") passes the service layer and is written to the user record.
+        // Fix: add @Email + @Valid to UserDTO and intercept at the controller layer (returns 400).
         UserDTO dto = new UserDTO();
         dto.setEmail("not-an-email");
 
         userService.updateOwnAccount(dto);
 
-        // 当前（broken）行为：email 被直接写入，save() 被调用
         assertThat(existingUser.getEmail()).isEqualTo("not-an-email");
         verify(userRepository, times(1)).save(existingUser);
         System.out.println("⚠️  TC-US-08: invalid email format accepted by service — missing @Email validation");
     }
 
     @Test
-    @DisplayName("TC-US-09 | updateOwnAccount | email 已被其他用户占用 → DataIntegrityViolationException 向上冒泡（未被 Service 捕获）")
+    @DisplayName("TC-US-09 | updateOwnAccount | duplicate email → DataIntegrityViolationException propagates")
     void updateOwnAccount_duplicateEmail_throwsDataIntegrityViolation() {
-        // [面试素材] Service 无显式 email 重复检查，直接调用 save()。
-        // 若 email 已存在于其他用户，DB unique constraint 触发 DataIntegrityViolationException。
-        // GlobalExceptionHandler 捕获该异常并返回 409，但 Service 层本身未处理，
-        // 意味着这是一个"靠框架兜底"的设计，而非主动防御。
-        // 推荐改进：save() 前调用 userRepository.existsByEmail() 提前检查，给出明确业务异常。
+        // Not idempotent: the service calls save() without checking for duplicate emails first.
+        // If the email is already taken, the DB unique constraint throws DataIntegrityViolationException,
+        // which GlobalExceptionHandler converts to 409. The service relies on the framework to catch it
+        // rather than failing fast with a domain exception.
+        // Fix: call userRepository.existsByEmail() before save() and throw a meaningful business exception.
         UserDTO dto = new UserDTO();
-        dto.setEmail("admin@hotel.com"); // 已被其他用户占用
+        dto.setEmail("admin@hotel.com"); // already taken by the seeded admin account
 
         when(userRepository.save(any())).thenThrow(
                 new org.springframework.dao.DataIntegrityViolationException("Duplicate entry for email"));
@@ -244,14 +244,9 @@ class UserServiceImplTest {
         verify(userRepository, times(1)).save(existingUser);
     }
 
-    // ── deleteOwnAccount ──────────────────────────────────────────────────────
-
     @Test
     @DisplayName("TC-US-10 | deleteOwnAccount | authenticated user is deleted from repository")
     void deleteUser_success() {
-        // Security context is already set to customer@hotel.com in BeforeEach
-        // userRepository.findByEmail("customer@hotel.com") returns existingUser (lenient)
-
         Response response = userService.deleteOwnAccount();
 
         assertThat(response.getStatus()).isEqualTo(200);

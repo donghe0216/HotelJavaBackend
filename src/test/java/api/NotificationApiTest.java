@@ -26,7 +26,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  *   - The notification is persisted with type=EMAIL
  *   - The bookingReference stored in the notification matches the booking
  */
-@DisplayName("📧 Notification API Tests (Indirect via Booking)")
+@DisplayName("Notification API Tests (Indirect via Booking)")
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class NotificationApiTest extends BaseApiTest {
 
@@ -40,13 +40,10 @@ class NotificationApiTest extends BaseApiTest {
                 "Skipped: no rooms in DB — seed at least one room before running notification tests");
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    // TC-N-01  sendEmail (indirect): 创建预订后，通知记录写入数据库
-    // ═══════════════════════════════════════════════════════════════
+    // TC-N-01: after booking creation, a notification record is persisted in the DB
     @Test @Order(1)
-    @DisplayName("TC-N-01 | sendEmail | 创建订单后通知记录写入DB：type=EMAIL，recipient/subject/body 非空")
+    @DisplayName("TC-N-01 | sendEmail | booking created — notification persisted with type=EMAIL and non-null fields")
     void sendEmail_isPersistedWithCorrectFields_afterBookingCreation() {
-        // 1. Create a booking → triggers sendEmail() internally
         Map<String, Object> bookingBody = bookingPayload(SEED_ROOM_ID, inDays(20), inDays(22));
 
         String bookingRef = given()
@@ -58,7 +55,7 @@ class NotificationApiTest extends BaseApiTest {
             .statusCode(200)
             .extract().path("booking.bookingReference");
 
-        // 2. Wait for @Async sendEmail to complete (poll instead of fixed sleep)
+        // Poll instead of fixed sleep — sendEmail() is @Async and has no deterministic delay
         pollUntil(8, () ->
             given().spec(adminSpec).when().get("/notifications/all")
                    .then().extract().jsonPath()
@@ -66,7 +63,6 @@ class NotificationApiTest extends BaseApiTest {
                    .size() > 0
         );
 
-        // 3. Verify all required fields in the persisted notification record
         given()
             .spec(adminSpec)
         .when()
@@ -82,9 +78,9 @@ class NotificationApiTest extends BaseApiTest {
             .body("notifications.find { it.bookingReference == '" + bookingRef + "' }.body",
                   not(emptyOrNullString()));
 
-        // 4. Verify email actually reached MailHog (requires MailHog on localhost:8025
-        //    and backend configured with spring.mail.host=localhost, port=1025)
-        //    Skipped silently if MailHog is not running.
+        // Verify email reached MailHog — requires MailHog on localhost:8025
+        // and backend configured with spring.mail.host=localhost, port=1025.
+        // Skipped silently if MailHog is not running.
         String recipient = given().spec(adminSpec).when().get("/notifications/all")
                 .then().extract()
                 .path("notifications.find { it.bookingReference == '" + bookingRef + "' }.recipient");

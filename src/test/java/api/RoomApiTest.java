@@ -31,11 +31,10 @@ import static org.hamcrest.Matchers.*;
  *   they can be skipped or the path can be overridden via
  *   an @Value property in the real application.
  */
-@DisplayName("🏠 Room API Tests")
+@DisplayName("Room API Tests")
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class RoomApiTest extends BaseApiTest {
 
-    // Shared state across ordered tests
     private static Long createdRoomId;
 
     // ── Minimal valid JPEG magic bytes (1×1 pixel) ────────────────────────────
@@ -46,12 +45,8 @@ class RoomApiTest extends BaseApiTest {
         (byte)0xFF,(byte)0xD9
     };
 
-    // ═══════════════════════════════════════════════════════════════
-    // addRoom — 正常路径
-    // ═══════════════════════════════════════════════════════════════
-
     @Test @Order(1)
-    @DisplayName("TC-R-01 | addRoom | 上传合法 JPEG 并成功创建房间")
+    @DisplayName("TC-R-01 | addRoom | valid JPEG upload → room created")
     void addRoom_success_withImage() {
         // ⚠️  This test will fail in CI unless IMAGE_DIRECTORY_FRONTEND is
         //     replaced with a configurable @Value / @TempDir path.
@@ -78,12 +73,11 @@ class RoomApiTest extends BaseApiTest {
             .body("message", containsStringIgnoringCase("added"))
             .extract().path("room.id");
 
-        // Store for later tests if returned; otherwise fetch from /rooms/all
         if (id != null) createdRoomId = id.longValue();
     }
 
     @Test @Order(2)
-    @DisplayName("TC-R-02 | addRoom | 不上传图片时成功创建，imageUrl 为 null")
+    @DisplayName("TC-R-02 | addRoom | no image → room created with null imageUrl")
     void addRoom_success_withoutImage() {
         given()
             .spec(adminSpec)
@@ -102,7 +96,7 @@ class RoomApiTest extends BaseApiTest {
     }
 
     @Test @Order(3)
-    @DisplayName("TC-R-03 | addRoom | 上传 .txt 文件，抛出 IllegalArgumentException")
+    @DisplayName("TC-R-03 | addRoom | .txt file upload → rejected")
     void addRoom_fail_illegalFileType() {
         byte[] textBytes = "this is not an image".getBytes();
 
@@ -127,7 +121,7 @@ class RoomApiTest extends BaseApiTest {
     }
 
     @Test @Order(4)
-    @DisplayName("TC-R-04 | addRoom | 【Bug文档】IMAGE_DIRECTORY_FRONTEND 硬编码路径问题")
+    @DisplayName("TC-R-04 | addRoom | [Bug] hardcoded image directory path")
     void addRoom_hardcodedPath_failsInCi() {
         // This is a documentation test.
         // The real assertion is: after replacing IMAGE_DIRECTORY_FRONTEND with
@@ -147,12 +141,8 @@ class RoomApiTest extends BaseApiTest {
             .statusCode(200);   // sanity — room controller is alive
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    // addRoom — 入参校验
-    // ═══════════════════════════════════════════════════════════════
-
     @Test @Order(5)
-    @DisplayName("TC-R-05 | addRoom | type 为非法枚举值，应返回 400")
+    @DisplayName("TC-R-05 | addRoom | invalid room type → 400")
     void addRoom_invalidRoomTypeEnum_returns400() {
         given()
             .spec(adminSpec)
@@ -169,7 +159,7 @@ class RoomApiTest extends BaseApiTest {
     }
 
     @Test @Order(6)
-    @DisplayName("TC-R-06 | addRoom | pricePerNight 传字符串，不应返回 500")
+    @DisplayName("TC-R-06 | addRoom | pricePerNight as string → not 500")
     void addRoom_priceAsString_doesNotReturn500() {
         given()
             .spec(adminSpec)
@@ -185,7 +175,7 @@ class RoomApiTest extends BaseApiTest {
     }
 
     @Test @Order(7)
-    @DisplayName("TC-R-07 | addRoom | pricePerNight 为负数，不应返回 500")
+    @DisplayName("TC-R-07 | addRoom | negative pricePerNight → not 500")
     void addRoom_negativePrice_doesNotReturn500() {
         given()
             .spec(adminSpec)
@@ -201,14 +191,12 @@ class RoomApiTest extends BaseApiTest {
     }
 
     @Test @Order(8)
-    @DisplayName("TC-R-08 | addRoom | roomNumber 已存在（299），应返回 409 或 400（源码无显式重复校验）")
+    @DisplayName("TC-R-08 | addRoom | [Bug] duplicate roomNumber — not caught, currently 500")
     void should_throw_when_room_number_already_exists() {
-        // [面试素材] 当前行为：第二次 POST 触发 DB unique constraint，
-        // DataIntegrityViolationException 未被捕获 → 实际返回 500（而非 409）。
-        // 这个 test 同时验证了：GlobalExceptionHandler 对 DataIntegrityViolationException
-        // 的处理是否完善（期望 400/409，若返回 500 则是需要修复的 bug）。
+        // Bug: a duplicate room number triggers DataIntegrityViolationException from the DB unique constraint.
+        // This exception is not caught by the service or GlobalExceptionHandler, so the client
+        // receives a 500 instead of 409. This test also verifies whether the handler mapping is complete.
 
-        // Step 1: create room 299 (unique number unlikely to conflict with other tests)
         given()
             .spec(adminSpec)
             .contentType("multipart/form-data")
@@ -222,7 +210,6 @@ class RoomApiTest extends BaseApiTest {
         .then()
             .statusCode(200);
 
-        // Step 2: attempt to create room 299 again — must be rejected
         given()
             .spec(adminSpec)
             .contentType("multipart/form-data")
@@ -237,12 +224,8 @@ class RoomApiTest extends BaseApiTest {
             .statusCode(anyOf(is(400), is(409), is(500)));
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    // getAllRooms
-    // ═══════════════════════════════════════════════════════════════
-
     @Test @Order(9)
-    @DisplayName("TC-R-09 | getAllRooms | 查询所有房间，按 id DESC 排序")
+    @DisplayName("TC-R-09 | getAllRooms | returns all rooms sorted by id DESC")
     void getAllRooms_success() {
         given()
             .spec(anonSpec)
@@ -262,12 +245,8 @@ class RoomApiTest extends BaseApiTest {
         }
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    // getAllRoomTypes
-    // ═══════════════════════════════════════════════════════════════
-
     @Test @Order(10)
-    @DisplayName("TC-R-10 | getAllRoomTypes | 返回所有 RoomType 枚举值，列表非空")
+    @DisplayName("TC-R-10 | getAllRoomTypes | returns all room type values")
     void getAllRoomTypes_returnsAllEnumValues() {
         given()
             .spec(anonSpec)
@@ -278,12 +257,8 @@ class RoomApiTest extends BaseApiTest {
             .body("$", not(empty()));
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    // getRoomById
-    // ═══════════════════════════════════════════════════════════════
-
     @Test @Order(11)
-    @DisplayName("TC-R-11 | getRoomById | 用有效 ID 查询，返回 RoomDTO")
+    @DisplayName("TC-R-11 | getRoomById | valid id → returns room")
     void getRoomById_success() {
         // TODO: test order dependency — this test relies on data created by a previous test, refactor to use @BeforeEach or independent fixtures
         given()
@@ -297,7 +272,7 @@ class RoomApiTest extends BaseApiTest {
     }
 
     @Test @Order(12)
-    @DisplayName("TC-R-12 | getRoomById | ID 不存在，抛出 NotFoundException")
+    @DisplayName("TC-R-12 | getRoomById | unknown id → 404")
     void getRoomById_notFound() {
         given()
             .spec(anonSpec)
@@ -308,12 +283,8 @@ class RoomApiTest extends BaseApiTest {
             .body("message", containsStringIgnoringCase("not found"));
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    // updateRoom
-    // ═══════════════════════════════════════════════════════════════
-
     @Test @Order(13)
-    @DisplayName("TC-R-13 | updateRoom | 成功更新 pricePerNight 和 capacity")
+    @DisplayName("TC-R-13 | updateRoom | update price and capacity → persisted")
     void updateRoom_success_partialUpdate() {
         // TODO: test order dependency — this test relies on data created by a previous test, refactor to use @BeforeEach or independent fixtures
         given()
@@ -329,13 +300,12 @@ class RoomApiTest extends BaseApiTest {
             .body("status",  equalTo(200))
             .body("message", containsStringIgnoringCase("updated"));
 
-        // Verify the change persisted
         given().spec(anonSpec).when().get("/rooms/{id}", createdRoomId)
                .then().body("room.capacity", equalTo(3));
     }
 
     @Test @Order(14)
-    @DisplayName("TC-R-14 | updateRoom | 要更新的 ID 不存在，抛出 NotFoundException")
+    @DisplayName("TC-R-14 | updateRoom | unknown id → 404")
     void updateRoom_notFound() {
         given()
             .spec(adminSpec)
@@ -350,7 +320,7 @@ class RoomApiTest extends BaseApiTest {
     }
 
     @Test @Order(15)
-    @DisplayName("TC-R-15 | updateRoom | 【边界】roomNumber=0 时应与业务确认是否合法")
+    @DisplayName("TC-R-15 | updateRoom | roomNumber=0 — documents current behaviour")
     void updateRoom_boundary_roomNumberZero() {
         // TODO: test order dependency — this test relies on data created by a previous test, refactor to use @BeforeEach or independent fixtures
         // Current code: >= 0 → 0 will pass.
@@ -368,7 +338,7 @@ class RoomApiTest extends BaseApiTest {
     }
 
     @Test @Order(16)
-    @DisplayName("TC-R-16 | updateRoom | 【边界】pricePerNight=0 时应与业务确认是否合法")
+    @DisplayName("TC-R-16 | updateRoom | pricePerNight=0 — documents current behaviour")
     void updateRoom_boundary_priceZero() {
         // TODO: test order dependency — this test relies on data created by a previous test, refactor to use @BeforeEach or independent fixtures
         given()
@@ -382,12 +352,8 @@ class RoomApiTest extends BaseApiTest {
             .statusCode(anyOf(is(200), is(400)));
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    // getAvailableRooms
-    // ═══════════════════════════════════════════════════════════════
-
     @Test @Order(17)
-    @DisplayName("TC-R-17 | getAvailableRooms | 合法日期范围，返回可用房间列表")
+    @DisplayName("TC-R-17 | getAvailableRooms | valid dates → returns available rooms")
     void getAvailableRooms_success() {
         given()
             .spec(anonSpec)
@@ -403,7 +369,7 @@ class RoomApiTest extends BaseApiTest {
     }
 
     @Test @Order(18)
-    @DisplayName("TC-R-18 | getAvailableRooms | 入住日期为昨天，抛出 InvalidBookingStateAndDateException")
+    @DisplayName("TC-R-18 | getAvailableRooms | checkIn in the past → 400/422")
     void getAvailableRooms_fail_checkInBeforeToday() {
         given()
             .spec(anonSpec)
@@ -418,7 +384,7 @@ class RoomApiTest extends BaseApiTest {
     }
 
     @Test @Order(19)
-    @DisplayName("TC-R-19 | getAvailableRooms | 退房日期早于入住日期，抛异常")
+    @DisplayName("TC-R-19 | getAvailableRooms | checkOut before checkIn → 400/422")
     void getAvailableRooms_fail_checkOutBeforeCheckIn() {
         given()
             .spec(anonSpec)
@@ -433,7 +399,7 @@ class RoomApiTest extends BaseApiTest {
     }
 
     @Test @Order(20)
-    @DisplayName("TC-R-20 | getAvailableRooms | 入住 == 退房，抛异常")
+    @DisplayName("TC-R-20 | getAvailableRooms | checkIn == checkOut → 400/422")
     void getAvailableRooms_fail_sameDate() {
         given()
             .spec(anonSpec)
@@ -447,12 +413,8 @@ class RoomApiTest extends BaseApiTest {
             .body("message", containsStringIgnoringCase("equal to check out date"));
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    // searchRoom
-    // ═══════════════════════════════════════════════════════════════
-
     @Test @Order(21)
-    @DisplayName("TC-R-21 | searchRoom | 合法关键词，返回匹配房间列表")
+    @DisplayName("TC-R-21 | searchRoom | keyword match → returns rooms")
     void searchRoom_success_validInput() {
         given()
             .spec(anonSpec)
@@ -466,7 +428,7 @@ class RoomApiTest extends BaseApiTest {
     }
 
     @Test @Order(22)
-    @DisplayName("TC-R-22 | searchRoom | 【边界】input='' 应返回全部或空列表，不应报 500")
+    @DisplayName("TC-R-22 | searchRoom | empty string → not 500")
     void searchRoom_emptyInput_doesNotThrow500() {
         given()
             .spec(anonSpec)
@@ -479,7 +441,7 @@ class RoomApiTest extends BaseApiTest {
     }
 
     @Test @Order(23)
-    @DisplayName("TC-R-23 | searchRoom | 特殊字符输入（SQL injection），不应返回 500")
+    @DisplayName("TC-R-23 | searchRoom | SQL injection input → not 500")
     void searchRoom_specialCharacters_doesNotReturn500() {
         given()
             .spec(anonSpec)
@@ -491,7 +453,7 @@ class RoomApiTest extends BaseApiTest {
     }
 
     @Test @Order(24)
-    @DisplayName("TC-R-24 | searchRoom | 超长关键词（300字符），不应返回 500")
+    @DisplayName("TC-R-24 | searchRoom | 300-char keyword → not 500")
     void searchRoom_oversizedInput_doesNotReturn500() {
         given()
             .spec(anonSpec)
@@ -503,7 +465,7 @@ class RoomApiTest extends BaseApiTest {
     }
 
     @Test @Order(25)
-    @DisplayName("TC-R-25 | searchRoom | Unicode / 日语字符输入，不应返回 500")
+    @DisplayName("TC-R-25 | searchRoom | unicode / Japanese input → not 500")
     void searchRoom_unicodeInput_doesNotReturn500() {
         given()
             .spec(anonSpec)
@@ -514,12 +476,8 @@ class RoomApiTest extends BaseApiTest {
             .statusCode(not(500));
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    // deleteRoom — 最后执行，避免破坏前面测试的共享数据
-    // ═══════════════════════════════════════════════════════════════
-
     @Test @Order(90)
-    @DisplayName("TC-R-26 | deleteRoom | 成功删除指定 ID 的房间")
+    @DisplayName("TC-R-26 | deleteRoom | valid id → deleted")
     void deleteRoom_success() {
         // TODO: test order dependency — this test relies on data created by a previous test, refactor to use @BeforeEach or independent fixtures
         given()
@@ -533,7 +491,7 @@ class RoomApiTest extends BaseApiTest {
     }
 
     @Test @Order(91)
-    @DisplayName("TC-R-27 | deleteRoom | 要删除的 ID 不存在，抛出 NotFoundException")
+    @DisplayName("TC-R-27 | deleteRoom | unknown id → 404")
     void deleteRoom_notFound() {
         given()
             .spec(adminSpec)

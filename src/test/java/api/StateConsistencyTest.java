@@ -19,22 +19,19 @@ import static org.hamcrest.Matchers.*;
  * These tests do NOT test individual features in isolation.
  * They test the *relationships* between features.
  */
-@DisplayName("🔄 State Consistency Tests")
+@DisplayName("State Consistency Tests")
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class StateConsistencyTest extends BaseApiTest {
 
     private static final Long SEED_ROOM_ID = 1L;
 
-    // ═══════════════════════════════════════════════════════════════
-    // TC-SC-01  创建 booking 后，同一日期该房间不可再被预订
-    // ═══════════════════════════════════════════════════════════════
+    // TC-SC-01: after booking is created, the room must not appear in available rooms for the same dates
     @Test @Order(1)
-    @DisplayName("TC-SC-01 | 创建 booking 后 | 同日期房间不可再被预订（availability 一致性）")
+    @DisplayName("TC-SC-01 | booking created | room not available for same dates")
     void afterBookingCreated_roomUnavailableForSameDates() {
         String checkIn  = inDays(40);
         String checkOut = inDays(42);
 
-        // 1. Create booking
         given()
             .spec(customerSpec)
             .body(bookingPayload(SEED_ROOM_ID, checkIn, checkOut))
@@ -43,7 +40,6 @@ class StateConsistencyTest extends BaseApiTest {
         .then()
             .statusCode(200);
 
-        // 2. Query available rooms for same dates — SEED_ROOM should not appear
         given()
             .spec(anonSpec)
             .queryParam("checkInDate",  checkIn)
@@ -57,13 +53,10 @@ class StateConsistencyTest extends BaseApiTest {
             .body("rooms.id.flatten()", not(hasItem(SEED_ROOM_ID.intValue())));
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    // TC-SC-02  updateBooking 状态后，查询结果应同步反映新状态
-    // ═══════════════════════════════════════════════════════════════
+    // TC-SC-02: after updateBooking, GET returns the new status immediately
     @Test @Order(2)
-    @DisplayName("TC-SC-02 | updateBooking 后 | 查询结果状态同步变化（读写一致性）")
+    @DisplayName("TC-SC-02 | updateBooking | GET reflects the new status after update")
     void afterBookingUpdated_queryReflectsNewStatus() {
-        // 1. Create booking
         String ref = given()
             .spec(customerSpec)
             .body(bookingPayload(SEED_ROOM_ID, inDays(50), inDays(52)))
@@ -80,7 +73,6 @@ class StateConsistencyTest extends BaseApiTest {
         .then()
             .extract().path("booking.id");
 
-        // 2. Update booking status
         given()
             .spec(adminSpec)
             .body(java.util.Map.of("id", id, "bookingStatus", "CHECKED_IN", "paymentStatus", "COMPLETED"))
@@ -89,7 +81,6 @@ class StateConsistencyTest extends BaseApiTest {
         .then()
             .statusCode(200);
 
-        // 3. Verify updated state is persisted and returned correctly
         given()
             .spec(adminSpec)
         .when()
@@ -100,13 +91,10 @@ class StateConsistencyTest extends BaseApiTest {
             .body("booking.paymentStatus", equalTo("COMPLETED"));
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    // TC-SC-03  booking 显示在用户的历史订单中
-    // ═══════════════════════════════════════════════════════════════
+    // TC-SC-03: newly created booking appears in the user's booking history
     @Test @Order(3)
-    @DisplayName("TC-SC-03 | 创建 booking 后 | 订单出现在 /users/bookings 历史记录中")
+    @DisplayName("TC-SC-03 | booking created | appears in /users/bookings history")
     void afterBookingCreated_appearsInUserBookingHistory() {
-        // 1. Create booking
         String ref = given()
             .spec(customerSpec)
             .body(bookingPayload(SEED_ROOM_ID, inDays(60), inDays(62)))
@@ -116,7 +104,6 @@ class StateConsistencyTest extends BaseApiTest {
             .statusCode(200)
             .extract().path("booking.bookingReference");
 
-        // 2. Verify it appears in my-bookings
         given()
             .spec(customerSpec)
         .when()
@@ -126,13 +113,10 @@ class StateConsistencyTest extends BaseApiTest {
             .body("bookings.bookingReference.flatten()", hasItem(ref));
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    // TC-SC-04  删除 room 后，该 room 不再出现在 /rooms/all 列表
-    // ═══════════════════════════════════════════════════════════════
+    // TC-SC-04: deleted room must not appear in /rooms/all
     @Test @Order(4)
-    @DisplayName("TC-SC-04 | 删除 room 后 | 该房间不再出现在 /rooms/all 列表")
+    @DisplayName("TC-SC-04 | room deleted | no longer appears in /rooms/all")
     void afterRoomDeleted_doesNotAppearInRoomList() {
-        // 1. Add a room to delete
         Integer newRoomId = given()
             .spec(adminSpec)
             .contentType("multipart/form-data")
@@ -147,7 +131,6 @@ class StateConsistencyTest extends BaseApiTest {
             .statusCode(200)
             .extract().path("room.id");
 
-        // 2. Delete it
         given()
             .spec(adminSpec)
         .when()
@@ -155,7 +138,6 @@ class StateConsistencyTest extends BaseApiTest {
         .then()
             .statusCode(200);
 
-        // 3. Verify it no longer appears in the room list
         given()
             .spec(anonSpec)
         .when()
@@ -165,13 +147,10 @@ class StateConsistencyTest extends BaseApiTest {
             .body("rooms.id.flatten()", not(hasItem(newRoomId)));
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    // TC-SC-05  删除 room 时若有 active booking，行为符合预期
-    // ═══════════════════════════════════════════════════════════════
+    // TC-SC-05: deleting a room with active bookings — must not return 500
     @Test @Order(5)
-    @DisplayName("TC-SC-05 | 删除有 booking 的 room | 系统行为符合预期（拒绝 or 级联删除）")
+    @DisplayName("TC-SC-05 | delete room with active booking | returns 200 (cascade) or 409 (conflict), never 500")
     void deleteRoomWithActiveBooking_behaviourIsConsistent() {
-        // 1. Add a room
         Integer roomId = given()
             .spec(adminSpec)
             .contentType("multipart/form-data")
@@ -186,7 +165,6 @@ class StateConsistencyTest extends BaseApiTest {
             .statusCode(200)
             .extract().path("room.id");
 
-        // 2. Create a booking for this room
         given()
             .spec(customerSpec)
             .body(bookingPayload(roomId.longValue(), inDays(70), inDays(72)))
@@ -195,7 +173,6 @@ class StateConsistencyTest extends BaseApiTest {
         .then()
             .statusCode(200);
 
-        // 3. Attempt to delete the room
         int deleteStatus = given()
             .spec(adminSpec)
         .when()
