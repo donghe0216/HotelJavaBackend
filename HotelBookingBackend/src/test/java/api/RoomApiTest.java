@@ -47,8 +47,9 @@ class RoomApiTest extends BaseApiTest {
     };
 
     // ═══════════════════════════════════════════════════════════════
-    // TC-R-01  addRoom: 带合法图片，成功创建房间
+    // addRoom — 正常路径
     // ═══════════════════════════════════════════════════════════════
+
     @Test @Order(1)
     @DisplayName("TC-R-01 | addRoom | 上传合法 JPEG 并成功创建房间")
     void addRoom_success_withImage() {
@@ -81,9 +82,6 @@ class RoomApiTest extends BaseApiTest {
         if (id != null) createdRoomId = id.longValue();
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    // TC-R-02  addRoom: 不带图片，成功创建
-    // ═══════════════════════════════════════════════════════════════
     @Test @Order(2)
     @DisplayName("TC-R-02 | addRoom | 不上传图片时成功创建，imageUrl 为 null")
     void addRoom_success_withoutImage() {
@@ -103,9 +101,6 @@ class RoomApiTest extends BaseApiTest {
             .body("message", containsStringIgnoringCase("added"));
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    // TC-R-03  addRoom: 非法图片格式（text/plain）
-    // ═══════════════════════════════════════════════════════════════
     @Test @Order(3)
     @DisplayName("TC-R-03 | addRoom | 上传 .txt 文件，抛出 IllegalArgumentException")
     void addRoom_fail_illegalFileType() {
@@ -131,9 +126,6 @@ class RoomApiTest extends BaseApiTest {
             .body("message", containsStringIgnoringCase("image"));
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    // TC-R-04  【补充/Bug】硬编码路径在 CI 环境下失败
-    // ═══════════════════════════════════════════════════════════════
     @Test @Order(4)
     @DisplayName("TC-R-04 | addRoom | 【Bug文档】IMAGE_DIRECTORY_FRONTEND 硬编码路径问题")
     void addRoom_hardcodedPath_failsInCi() {
@@ -156,269 +148,60 @@ class RoomApiTest extends BaseApiTest {
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // TC-R-05  getAllRooms: 返回所有房间列表
+    // addRoom — 入参校验
     // ═══════════════════════════════════════════════════════════════
+
     @Test @Order(5)
-    @DisplayName("TC-R-05 | getAllRooms | 查询所有房间，按 id DESC 排序")
-    void getAllRooms_success() {
+    @DisplayName("TC-R-05 | addRoom | type 为非法枚举值，应返回 400")
+    void addRoom_invalidRoomTypeEnum_returns400() {
         given()
-            .spec(anonSpec)
+            .spec(adminSpec)
+            .contentType("multipart/form-data")
+            .multiPart("roomNumber",    500)
+            .multiPart("type",          "PENTHOUSE")
+            .multiPart("pricePerNight", "100.00")
+            .multiPart("capacity",      2)
         .when()
-            .get("/rooms/all")
+            .post("/rooms/add")
         .then()
-            .statusCode(200)
-            .body("status",  equalTo(200))
-            .body("rooms",   notNullValue())
-            .body("rooms",   not(empty()));
-
-        // Cache one ID for subsequent tests if not already set
-        if (createdRoomId == null) {
-            Integer firstId = given().spec(anonSpec).when().get("/rooms/all")
-                    .then().extract().path("rooms[0].id");
-            if (firstId != null) createdRoomId = firstId.longValue();
-        }
+            .statusCode(anyOf(is(400), is(422)))
+            .statusCode(not(500));
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    // TC-R-06  getRoomById: 成功查询指定 ID 的房间
-    // ═══════════════════════════════════════════════════════════════
     @Test @Order(6)
-    @DisplayName("TC-R-06 | getRoomById | 用有效 ID 查询，返回 RoomDTO")
-    void getRoomById_success() {
-        // TODO: test order dependency — this test relies on data created by a previous test, refactor to use @BeforeEach or independent fixtures
+    @DisplayName("TC-R-06 | addRoom | pricePerNight 传字符串，不应返回 500")
+    void addRoom_priceAsString_doesNotReturn500() {
         given()
-            .spec(anonSpec)
+            .spec(adminSpec)
+            .contentType("multipart/form-data")
+            .multiPart("roomNumber",    501)
+            .multiPart("type",          "SINGLE")
+            .multiPart("pricePerNight", "not-a-number")
+            .multiPart("capacity",      2)
         .when()
-            .get("/rooms/{id}", createdRoomId)
+            .post("/rooms/add")
         .then()
-            .statusCode(200)
-            .body("status",   equalTo(200))
-            .body("room.id",  equalTo(createdRoomId.intValue()));
+            .statusCode(not(500));
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    // TC-R-07  getRoomById: 不存在的 ID → 404
-    // ═══════════════════════════════════════════════════════════════
     @Test @Order(7)
-    @DisplayName("TC-R-07 | getRoomById | ID 不存在，抛出 NotFoundException")
-    void getRoomById_notFound() {
+    @DisplayName("TC-R-07 | addRoom | pricePerNight 为负数，不应返回 500")
+    void addRoom_negativePrice_doesNotReturn500() {
         given()
-            .spec(anonSpec)
+            .spec(adminSpec)
+            .contentType("multipart/form-data")
+            .multiPart("roomNumber",    502)
+            .multiPart("type",          "SINGLE")
+            .multiPart("pricePerNight", "-100.00")
+            .multiPart("capacity",      2)
         .when()
-            .get("/rooms/{id}", 999999L)
+            .post("/rooms/add")
         .then()
-            .statusCode(anyOf(is(400), is(404)))
-            .body("message", containsStringIgnoringCase("not found"));
+            .statusCode(not(500));
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    // TC-R-08  updateRoom: 成功更新部分字段
-    // ═══════════════════════════════════════════════════════════════
     @Test @Order(8)
-    @DisplayName("TC-R-08 | updateRoom | 成功更新 pricePerNight 和 capacity")
-    void updateRoom_success_partialUpdate() {
-        // TODO: test order dependency — this test relies on data created by a previous test, refactor to use @BeforeEach or independent fixtures
-        given()
-            .spec(adminSpec)
-            .contentType("multipart/form-data")
-            .multiPart("id",            createdRoomId)
-            .multiPart("pricePerNight", "200.00")
-            .multiPart("capacity",      3)
-        .when()
-            .put("/rooms/update")
-        .then()
-            .statusCode(200)
-            .body("status",  equalTo(200))
-            .body("message", containsStringIgnoringCase("updated"));
-
-        // Verify the change persisted
-        given().spec(anonSpec).when().get("/rooms/{id}", createdRoomId)
-               .then().body("room.capacity", equalTo(3));
-    }
-
-    // ═══════════════════════════════════════════════════════════════
-    // TC-R-09  updateRoom: ID 不存在 → NotFoundException
-    // ═══════════════════════════════════════════════════════════════
-    @Test @Order(9)
-    @DisplayName("TC-R-09 | updateRoom | 要更新的 ID 不存在，抛出 NotFoundException")
-    void updateRoom_notFound() {
-        given()
-            .spec(adminSpec)
-            .contentType("multipart/form-data")
-            .multiPart("id",            999999L)
-            .multiPart("pricePerNight", "200.00")
-        .when()
-            .put("/rooms/update")
-        .then()
-            .statusCode(anyOf(is(400), is(404)))
-            .body("message", containsStringIgnoringCase("not found"));
-    }
-
-    // ═══════════════════════════════════════════════════════════════
-    // TC-R-10  【补充/边界】roomNumber=0 是否被更新
-    // ═══════════════════════════════════════════════════════════════
-    @Test @Order(10)
-    @DisplayName("TC-R-10 | updateRoom | 【边界】roomNumber=0 时应与业务确认是否合法")
-    void updateRoom_boundary_roomNumberZero() {
-        // TODO: test order dependency — this test relies on data created by a previous test, refactor to use @BeforeEach or independent fixtures
-        // Current code: >= 0 → 0 will pass.
-        // This test documents the behaviour; if 0 is invalid, fix condition to > 0.
-        given()
-            .spec(adminSpec)
-            .contentType("multipart/form-data")
-            .multiPart("id",         createdRoomId)
-            .multiPart("roomNumber", 0)
-        .when()
-            .put("/rooms/update")
-        .then()
-            // Document current outcome (200 if 0 is accepted)
-            .statusCode(anyOf(is(200), is(400)));
-    }
-
-    // ═══════════════════════════════════════════════════════════════
-    // TC-R-11  【补充/边界】pricePerNight=0 是否被更新
-    // ═══════════════════════════════════════════════════════════════
-    @Test @Order(11)
-    @DisplayName("TC-R-11 | updateRoom | 【边界】pricePerNight=0 时应与业务确认是否合法")
-    void updateRoom_boundary_priceZero() {
-        // TODO: test order dependency — this test relies on data created by a previous test, refactor to use @BeforeEach or independent fixtures
-        given()
-            .spec(adminSpec)
-            .contentType("multipart/form-data")
-            .multiPart("id",            createdRoomId)
-            .multiPart("pricePerNight", "0.00")
-        .when()
-            .put("/rooms/update")
-        .then()
-            .statusCode(anyOf(is(200), is(400)));
-    }
-
-    // ═══════════════════════════════════════════════════════════════
-    // TC-R-12  getAvailableRooms: 成功查询可用房间
-    // ═══════════════════════════════════════════════════════════════
-    @Test @Order(12)
-    @DisplayName("TC-R-12 | getAvailableRooms | 合法日期范围，返回可用房间列表")
-    void getAvailableRooms_success() {
-        given()
-            .spec(anonSpec)
-            .queryParam("checkInDate",  tomorrow())
-            .queryParam("checkOutDate", inDays(3))
-            .queryParam("roomType",     "SINGLE")
-        .when()
-            .get("/rooms/available")
-        .then()
-            .statusCode(200)
-            .body("status", equalTo(200))
-            .body("rooms",  notNullValue());
-    }
-
-    // ═══════════════════════════════════════════════════════════════
-    // TC-R-13  getAvailableRooms: 入住日期在今天之前
-    // ═══════════════════════════════════════════════════════════════
-    @Test @Order(13)
-    @DisplayName("TC-R-13 | getAvailableRooms | 入住日期为昨天，抛出 InvalidBookingStateAndDateException")
-    void getAvailableRooms_fail_checkInBeforeToday() {
-        given()
-            .spec(anonSpec)
-            .queryParam("checkInDate",  yesterday())
-            .queryParam("checkOutDate", tomorrow())
-            .queryParam("roomType",     "SINGLE")
-        .when()
-            .get("/rooms/available")
-        .then()
-            .statusCode(400)
-            .body("message", containsStringIgnoringCase("before today"));
-    }
-
-    // ═══════════════════════════════════════════════════════════════
-    // TC-R-14  getAvailableRooms: 退房日期早于入住日期
-    // ═══════════════════════════════════════════════════════════════
-    @Test @Order(14)
-    @DisplayName("TC-R-14 | getAvailableRooms | 退房日期早于入住日期，抛异常")
-    void getAvailableRooms_fail_checkOutBeforeCheckIn() {
-        given()
-            .spec(anonSpec)
-            .queryParam("checkInDate",  inDays(3))
-            .queryParam("checkOutDate", tomorrow())
-            .queryParam("roomType",     "SINGLE")
-        .when()
-            .get("/rooms/available")
-        .then()
-            .statusCode(400)
-            .body("message", containsStringIgnoringCase("before check in"));
-    }
-
-    // ═══════════════════════════════════════════════════════════════
-    // TC-R-15  getAvailableRooms: 退房与入住同一天
-    // ═══════════════════════════════════════════════════════════════
-    @Test @Order(15)
-    @DisplayName("TC-R-15 | getAvailableRooms | 入住 == 退房，抛异常")
-    void getAvailableRooms_fail_sameDate() {
-        given()
-            .spec(anonSpec)
-            .queryParam("checkInDate",  tomorrow())
-            .queryParam("checkOutDate", tomorrow())
-            .queryParam("roomType",     "SINGLE")
-        .when()
-            .get("/rooms/available")
-        .then()
-            .statusCode(400)
-            .body("message", containsStringIgnoringCase("equal to check out date"));
-    }
-
-    // ═══════════════════════════════════════════════════════════════
-    // TC-R-16  getAllRoomTypes: 返回所有枚举值
-    // ═══════════════════════════════════════════════════════════════
-    @Test @Order(16)
-    @DisplayName("TC-R-16 | getAllRoomTypes | 【补充】返回所有 RoomType 枚举值，列表非空")
-    void getAllRoomTypes_returnsAllEnumValues() {
-        given()
-            .spec(anonSpec)
-        .when()
-            .get("/rooms/types")
-        .then()
-            .statusCode(200)
-            .body("$", not(empty()));
-    }
-
-    // ═══════════════════════════════════════════════════════════════
-    // TC-R-17  searchRoom: 关键词有效，返回匹配结果
-    // ═══════════════════════════════════════════════════════════════
-    @Test @Order(17)
-    @DisplayName("TC-R-17 | searchRoom | 合法关键词，返回匹配房间列表")
-    void searchRoom_success_validInput() {
-        given()
-            .spec(anonSpec)
-            .queryParam("input", "single")
-        .when()
-            .get("/rooms/search")
-        .then()
-            .statusCode(200)
-            .body("status", equalTo(200))
-            .body("rooms",  notNullValue());
-    }
-
-    // ═══════════════════════════════════════════════════════════════
-    // TC-R-18  【补充/边界】searchRoom: 空字符串输入
-    // ═══════════════════════════════════════════════════════════════
-    @Test @Order(18)
-    @DisplayName("TC-R-18 | searchRoom | 【边界】input='' 应返回全部或空列表，不应报 500")
-    void searchRoom_emptyInput_doesNotThrow500() {
-        given()
-            .spec(anonSpec)
-            .queryParam("input", "")
-        .when()
-            .get("/rooms/search")
-        .then()
-            // 500 is a bug; 200 or 400 are acceptable
-            .statusCode(anyOf(is(200), is(400)));
-    }
-
-    // ═══════════════════════════════════════════════════════════════
-    // TC-R-21  addRoom: roomNumber 重复 → 应返回 409/400
-    // ═══════════════════════════════════════════════════════════════
-    @Test @Order(21)
-    @DisplayName("TC-R-21 | addRoom | roomNumber 已存在（299），应返回 409 或 400（源码无显式重复校验）")
+    @DisplayName("TC-R-08 | addRoom | roomNumber 已存在（299），应返回 409 或 400（源码无显式重复校验）")
     void should_throw_when_room_number_already_exists() {
         // [面试素材] 当前行为：第二次 POST 触发 DB unique constraint，
         // DataIntegrityViolationException 未被捕获 → 实际返回 500（而非 409）。
@@ -455,10 +238,288 @@ class RoomApiTest extends BaseApiTest {
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // TC-R-19  deleteRoom: 成功删除 (run last)
+    // getAllRooms
     // ═══════════════════════════════════════════════════════════════
+
+    @Test @Order(9)
+    @DisplayName("TC-R-09 | getAllRooms | 查询所有房间，按 id DESC 排序")
+    void getAllRooms_success() {
+        given()
+            .spec(anonSpec)
+        .when()
+            .get("/rooms/all")
+        .then()
+            .statusCode(200)
+            .body("status",  equalTo(200))
+            .body("rooms",   notNullValue())
+            .body("rooms",   not(empty()));
+
+        // Cache one ID for subsequent tests if not already set
+        if (createdRoomId == null) {
+            Integer firstId = given().spec(anonSpec).when().get("/rooms/all")
+                    .then().extract().path("rooms[0].id");
+            if (firstId != null) createdRoomId = firstId.longValue();
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // getAllRoomTypes
+    // ═══════════════════════════════════════════════════════════════
+
+    @Test @Order(10)
+    @DisplayName("TC-R-10 | getAllRoomTypes | 返回所有 RoomType 枚举值，列表非空")
+    void getAllRoomTypes_returnsAllEnumValues() {
+        given()
+            .spec(anonSpec)
+        .when()
+            .get("/rooms/types")
+        .then()
+            .statusCode(200)
+            .body("$", not(empty()));
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // getRoomById
+    // ═══════════════════════════════════════════════════════════════
+
+    @Test @Order(11)
+    @DisplayName("TC-R-11 | getRoomById | 用有效 ID 查询，返回 RoomDTO")
+    void getRoomById_success() {
+        // TODO: test order dependency — this test relies on data created by a previous test, refactor to use @BeforeEach or independent fixtures
+        given()
+            .spec(anonSpec)
+        .when()
+            .get("/rooms/{id}", createdRoomId)
+        .then()
+            .statusCode(200)
+            .body("status",   equalTo(200))
+            .body("room.id",  equalTo(createdRoomId.intValue()));
+    }
+
+    @Test @Order(12)
+    @DisplayName("TC-R-12 | getRoomById | ID 不存在，抛出 NotFoundException")
+    void getRoomById_notFound() {
+        given()
+            .spec(anonSpec)
+        .when()
+            .get("/rooms/{id}", 999999L)
+        .then()
+            .statusCode(anyOf(is(400), is(404)))
+            .body("message", containsStringIgnoringCase("not found"));
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // updateRoom
+    // ═══════════════════════════════════════════════════════════════
+
+    @Test @Order(13)
+    @DisplayName("TC-R-13 | updateRoom | 成功更新 pricePerNight 和 capacity")
+    void updateRoom_success_partialUpdate() {
+        // TODO: test order dependency — this test relies on data created by a previous test, refactor to use @BeforeEach or independent fixtures
+        given()
+            .spec(adminSpec)
+            .contentType("multipart/form-data")
+            .multiPart("id",            createdRoomId)
+            .multiPart("pricePerNight", "200.00")
+            .multiPart("capacity",      3)
+        .when()
+            .put("/rooms/update")
+        .then()
+            .statusCode(200)
+            .body("status",  equalTo(200))
+            .body("message", containsStringIgnoringCase("updated"));
+
+        // Verify the change persisted
+        given().spec(anonSpec).when().get("/rooms/{id}", createdRoomId)
+               .then().body("room.capacity", equalTo(3));
+    }
+
+    @Test @Order(14)
+    @DisplayName("TC-R-14 | updateRoom | 要更新的 ID 不存在，抛出 NotFoundException")
+    void updateRoom_notFound() {
+        given()
+            .spec(adminSpec)
+            .contentType("multipart/form-data")
+            .multiPart("id",            999999L)
+            .multiPart("pricePerNight", "200.00")
+        .when()
+            .put("/rooms/update")
+        .then()
+            .statusCode(anyOf(is(400), is(404)))
+            .body("message", containsStringIgnoringCase("not found"));
+    }
+
+    @Test @Order(15)
+    @DisplayName("TC-R-15 | updateRoom | 【边界】roomNumber=0 时应与业务确认是否合法")
+    void updateRoom_boundary_roomNumberZero() {
+        // TODO: test order dependency — this test relies on data created by a previous test, refactor to use @BeforeEach or independent fixtures
+        // Current code: >= 0 → 0 will pass.
+        // This test documents the behaviour; if 0 is invalid, fix condition to > 0.
+        given()
+            .spec(adminSpec)
+            .contentType("multipart/form-data")
+            .multiPart("id",         createdRoomId)
+            .multiPart("roomNumber", 0)
+        .when()
+            .put("/rooms/update")
+        .then()
+            // Document current outcome (200 if 0 is accepted)
+            .statusCode(anyOf(is(200), is(400)));
+    }
+
+    @Test @Order(16)
+    @DisplayName("TC-R-16 | updateRoom | 【边界】pricePerNight=0 时应与业务确认是否合法")
+    void updateRoom_boundary_priceZero() {
+        // TODO: test order dependency — this test relies on data created by a previous test, refactor to use @BeforeEach or independent fixtures
+        given()
+            .spec(adminSpec)
+            .contentType("multipart/form-data")
+            .multiPart("id",            createdRoomId)
+            .multiPart("pricePerNight", "0.00")
+        .when()
+            .put("/rooms/update")
+        .then()
+            .statusCode(anyOf(is(200), is(400)));
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // getAvailableRooms
+    // ═══════════════════════════════════════════════════════════════
+
+    @Test @Order(17)
+    @DisplayName("TC-R-17 | getAvailableRooms | 合法日期范围，返回可用房间列表")
+    void getAvailableRooms_success() {
+        given()
+            .spec(anonSpec)
+            .queryParam("checkInDate",  tomorrow())
+            .queryParam("checkOutDate", inDays(3))
+            .queryParam("roomType",     "SINGLE")
+        .when()
+            .get("/rooms/available")
+        .then()
+            .statusCode(200)
+            .body("status", equalTo(200))
+            .body("rooms",  notNullValue());
+    }
+
+    @Test @Order(18)
+    @DisplayName("TC-R-18 | getAvailableRooms | 入住日期为昨天，抛出 InvalidBookingStateAndDateException")
+    void getAvailableRooms_fail_checkInBeforeToday() {
+        given()
+            .spec(anonSpec)
+            .queryParam("checkInDate",  yesterday())
+            .queryParam("checkOutDate", tomorrow())
+            .queryParam("roomType",     "SINGLE")
+        .when()
+            .get("/rooms/available")
+        .then()
+            .statusCode(400)
+            .body("message", containsStringIgnoringCase("before today"));
+    }
+
+    @Test @Order(19)
+    @DisplayName("TC-R-19 | getAvailableRooms | 退房日期早于入住日期，抛异常")
+    void getAvailableRooms_fail_checkOutBeforeCheckIn() {
+        given()
+            .spec(anonSpec)
+            .queryParam("checkInDate",  inDays(3))
+            .queryParam("checkOutDate", tomorrow())
+            .queryParam("roomType",     "SINGLE")
+        .when()
+            .get("/rooms/available")
+        .then()
+            .statusCode(400)
+            .body("message", containsStringIgnoringCase("before check in"));
+    }
+
+    @Test @Order(20)
+    @DisplayName("TC-R-20 | getAvailableRooms | 入住 == 退房，抛异常")
+    void getAvailableRooms_fail_sameDate() {
+        given()
+            .spec(anonSpec)
+            .queryParam("checkInDate",  tomorrow())
+            .queryParam("checkOutDate", tomorrow())
+            .queryParam("roomType",     "SINGLE")
+        .when()
+            .get("/rooms/available")
+        .then()
+            .statusCode(400)
+            .body("message", containsStringIgnoringCase("equal to check out date"));
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // searchRoom
+    // ═══════════════════════════════════════════════════════════════
+
+    @Test @Order(21)
+    @DisplayName("TC-R-21 | searchRoom | 合法关键词，返回匹配房间列表")
+    void searchRoom_success_validInput() {
+        given()
+            .spec(anonSpec)
+            .queryParam("input", "single")
+        .when()
+            .get("/rooms/search")
+        .then()
+            .statusCode(200)
+            .body("status", equalTo(200))
+            .body("rooms",  notNullValue());
+    }
+
+    @Test @Order(22)
+    @DisplayName("TC-R-22 | searchRoom | 【边界】input='' 应返回全部或空列表，不应报 500")
+    void searchRoom_emptyInput_doesNotThrow500() {
+        given()
+            .spec(anonSpec)
+            .queryParam("input", "")
+        .when()
+            .get("/rooms/search")
+        .then()
+            // 500 is a bug; 200 or 400 are acceptable
+            .statusCode(anyOf(is(200), is(400)));
+    }
+
+    @Test @Order(23)
+    @DisplayName("TC-R-23 | searchRoom | 特殊字符输入（SQL injection），不应返回 500")
+    void searchRoom_specialCharacters_doesNotReturn500() {
+        given()
+            .spec(anonSpec)
+            .queryParam("input", "' OR 1=1; --")
+        .when()
+            .get("/rooms/search")
+        .then()
+            .statusCode(not(500));
+    }
+
+    @Test @Order(24)
+    @DisplayName("TC-R-24 | searchRoom | 超长关键词（300字符），不应返回 500")
+    void searchRoom_oversizedInput_doesNotReturn500() {
+        given()
+            .spec(anonSpec)
+            .queryParam("input", "a".repeat(300))
+        .when()
+            .get("/rooms/search")
+        .then()
+            .statusCode(not(500));
+    }
+
+    @Test @Order(25)
+    @DisplayName("TC-R-25 | searchRoom | Unicode / 日语字符输入，不应返回 500")
+    void searchRoom_unicodeInput_doesNotReturn500() {
+        given()
+            .spec(anonSpec)
+            .queryParam("input", "シングルルーム")
+        .when()
+            .get("/rooms/search")
+        .then()
+            .statusCode(not(500));
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // deleteRoom — 最后执行，避免破坏前面测试的共享数据
+    // ═══════════════════════════════════════════════════════════════
+
     @Test @Order(90)
-    @DisplayName("TC-R-19 | deleteRoom | 成功删除指定 ID 的房间")
+    @DisplayName("TC-R-26 | deleteRoom | 成功删除指定 ID 的房间")
     void deleteRoom_success() {
         // TODO: test order dependency — this test relies on data created by a previous test, refactor to use @BeforeEach or independent fixtures
         given()
@@ -471,11 +532,8 @@ class RoomApiTest extends BaseApiTest {
             .body("message", containsStringIgnoringCase("deleted"));
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    // TC-R-20  deleteRoom: ID 不存在
-    // ═══════════════════════════════════════════════════════════════
     @Test @Order(91)
-    @DisplayName("TC-R-20 | deleteRoom | 要删除的 ID 不存在，抛出 NotFoundException")
+    @DisplayName("TC-R-27 | deleteRoom | 要删除的 ID 不存在，抛出 NotFoundException")
     void deleteRoom_notFound() {
         given()
             .spec(adminSpec)
