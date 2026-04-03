@@ -127,7 +127,26 @@ class BookingServiceImplTest {
     }
 
     @Test
-    @DisplayName("TC-BS-04 | createBooking | room not available → throws")
+    @DisplayName("TC-BS-04 | createBooking | checkIn = today → valid, does not throw")
+    void checkInToday_shouldNotThrow() {
+        // Boundary: checkIn == today is the earliest allowed date (isBefore(today) is false)
+        validBookingDTO.setCheckInDate(LocalDate.now());
+        validBookingDTO.setCheckOutDate(LocalDate.now().plusDays(1));
+
+        when(userService.getCurrentLoggedInUser()).thenReturn(testUser);
+        when(roomRepository.findByIdWithLock(testRoom.getId())).thenReturn(Optional.of(testRoom));
+        when(bookingRepository.isRoomAvailable(any(), any(), any())).thenReturn(true);
+        when(bookingCodeGenerator.generateBookingReference()).thenReturn("ABCDEFGHIJ");
+        when(bookingRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(modelMapper.map(any(Booking.class), eq(BookingDTO.class))).thenAnswer(inv -> new BookingDTO());
+
+        var response = bookingService.createBooking(validBookingDTO);
+
+        assertThat(response.getStatus()).isEqualTo(200);
+    }
+
+    @Test
+    @DisplayName("TC-BS-05 | createBooking | room not available → throws")
     void roomNotAvailable_shouldThrow() {
         when(userService.getCurrentLoggedInUser()).thenReturn(testUser);
         when(roomRepository.findByIdWithLock(testRoom.getId())).thenReturn(Optional.of(testRoom));
@@ -139,7 +158,8 @@ class BookingServiceImplTest {
     }
 
     @Test
-    @DisplayName("TC-BS-05 | createBooking | roomId not found → throws, no save")
+    @DisplayName("TC-BS-06 | createBooking | roomId not found → throws, no save")
+
     void roomNotFound_shouldThrow() {
         validBookingDTO.setRoomId(999L);
         when(userService.getCurrentLoggedInUser()).thenReturn(testUser);
@@ -159,7 +179,7 @@ class BookingServiceImplTest {
         "30, 100.00, 3000.00",
         "3,   99.99, 299.97",
     })
-    @DisplayName("TC-BS-06 | createBooking | totalPrice = nights × pricePerNight")
+    @DisplayName("TC-BS-07 | createBooking | totalPrice = nights × pricePerNight")
     void totalPrice_shouldEqual_nightsTimesPrice(int nights, String pricePerNight, String expectedTotal) {
         testRoom.setPricePerNight(new BigDecimal(pricePerNight));
         validBookingDTO.setCheckInDate(LocalDate.now().plusDays(1));
@@ -184,7 +204,7 @@ class BookingServiceImplTest {
     }
 
     @Test
-    @DisplayName("TC-BS-07 | createBooking | valid input → saved with BOOKED/PENDING, sends email")
+    @DisplayName("TC-BS-08 | createBooking | valid input → saved with BOOKED/PENDING, sends email")
     void validBooking_shouldSaveAndReturn200() {
         validBookingDTO.setCheckInDate(LocalDate.now().plusDays(1));
         validBookingDTO.setCheckOutDate(LocalDate.now().plusDays(2));
@@ -221,7 +241,7 @@ class BookingServiceImplTest {
     }
 
     @Test
-    @DisplayName("TC-BS-08 | findBookingByReferenceNo | valid reference → returns full BookingDTO")
+    @DisplayName("TC-BS-09 | findBookingByReferenceNo | valid reference → returns full BookingDTO")
     void getBookingByReference_validRef() {
         Booking booking = new Booking();
         booking.setBookingReference("ABCDEFGHIJ");
@@ -257,7 +277,7 @@ class BookingServiceImplTest {
     }
 
     @Test
-    @DisplayName("TC-BS-09 | findBookingByReferenceNo | unknown reference → throws")
+    @DisplayName("TC-BS-10 | findBookingByReferenceNo | unknown reference → throws")
     void getBookingByReference_notFound() {
         when(bookingRepository.findByBookingReference("INVALID000")).thenReturn(Optional.empty());
 
@@ -267,7 +287,7 @@ class BookingServiceImplTest {
     }
 
     @Test
-    @DisplayName("TC-BS-10 | updateBooking | id=null → throws, no save")
+    @DisplayName("TC-BS-11 | updateBooking | id=null → throws, no save")
     void updateBooking_nullId_throwsNotFoundException() {
         BookingDTO dto = new BookingDTO();
         dto.setId(null);
@@ -281,7 +301,7 @@ class BookingServiceImplTest {
     }
 
     @Test
-    @DisplayName("TC-BS-11 | updateBooking | id not found → throws, no save")
+    @DisplayName("TC-BS-12 | updateBooking | id not found → throws, no save")
     void updateBooking_idNotFound_throwsNotFoundException() {
         BookingDTO dto = new BookingDTO();
         dto.setId(999L);
@@ -297,7 +317,7 @@ class BookingServiceImplTest {
     }
 
     @Test
-    @DisplayName("TC-BS-12 | updateBooking | bookingStatus only — paymentStatus unchanged")
+    @DisplayName("TC-BS-13 | updateBooking | bookingStatus only — paymentStatus unchanged")
     void updateBooking_onlyBookingStatus_paymentStatusUnchanged() {
         Booking existing = new Booking();
         existing.setId(1L);
@@ -322,7 +342,7 @@ class BookingServiceImplTest {
     }
 
     @Test
-    @DisplayName("TC-BS-13 | updateBooking | paymentStatus only — bookingStatus unchanged")
+    @DisplayName("TC-BS-14 | updateBooking | paymentStatus only — bookingStatus unchanged")
     void updateBooking_onlyPaymentStatus_bookingStatusUnchanged() {
         Booking existing = new Booking();
         existing.setId(1L);
@@ -347,7 +367,7 @@ class BookingServiceImplTest {
     }
 
     @Test
-    @DisplayName("TC-BS-14 | createBooking | roomId=null → throws, no save")
+    @DisplayName("TC-BS-15 | createBooking | roomId=null → throws, no save")
     void should_throw_when_roomId_is_null() {
         validBookingDTO.setRoomId(null);
         when(userService.getCurrentLoggedInUser()).thenReturn(testUser);
@@ -361,7 +381,7 @@ class BookingServiceImplTest {
     }
 
     @Test
-    @DisplayName("TC-BS-15 | createBooking | pricePerNight=null → throws domain exception, no save")
+    @DisplayName("TC-BS-16 | createBooking | pricePerNight=null → throws domain exception, no save")
     void should_throw_when_price_is_null() {
         testRoom.setPricePerNight(null);
 
@@ -377,7 +397,7 @@ class BookingServiceImplTest {
     }
 
     @Test
-    @DisplayName("TC-BS-16 | createBooking | checkInDate=null → throws")
+    @DisplayName("TC-BS-17 | createBooking | checkInDate=null → throws")
     void should_throw_when_checkInDate_is_null() {
         validBookingDTO.setCheckInDate(null);
 
@@ -392,7 +412,7 @@ class BookingServiceImplTest {
     }
 
     @Test
-    @DisplayName("TC-BS-17 | createBooking | checkOutDate=null → throws")
+    @DisplayName("TC-BS-18 | createBooking | checkOutDate=null → throws")
     void should_throw_when_checkOutDate_is_null() {
         validBookingDTO.setCheckOutDate(null);
 
@@ -407,7 +427,7 @@ class BookingServiceImplTest {
     }
 
     @Test
-    @DisplayName("TC-BS-18 | findBookingByReferenceNo | referenceNo=null → throws")
+    @DisplayName("TC-BS-19 | findBookingByReferenceNo | referenceNo=null → throws")
     void should_throw_when_referenceNumber_is_null() {
         when(bookingRepository.findByBookingReference(null)).thenReturn(Optional.empty());
 
