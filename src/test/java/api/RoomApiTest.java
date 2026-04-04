@@ -154,8 +154,7 @@ class RoomApiTest extends BaseApiTest {
         .when()
             .post("/rooms/add")
         .then()
-            .statusCode(anyOf(is(400), is(422)))
-            .statusCode(not(500));
+            .statusCode(400);
     }
 
     @Test @Order(6)
@@ -191,11 +190,10 @@ class RoomApiTest extends BaseApiTest {
     }
 
     @Test @Order(8)
-    @DisplayName("TC-R-08 | addRoom | [Bug] duplicate roomNumber — not caught, currently 500")
+    @DisplayName("TC-R-08 | addRoom | duplicate roomNumber → 409")
     void should_throw_when_room_number_already_exists() {
-        // Bug: a duplicate room number triggers DataIntegrityViolationException from the DB unique constraint.
-        // This exception is not caught by the service or GlobalExceptionHandler, so the client
-        // receives a 500 instead of 409. This test also verifies whether the handler mapping is complete.
+        // Duplicate room number triggers DataIntegrityViolationException from the DB unique constraint.
+        // GlobalExceptionHandler maps DataIntegrityViolationException → 409 CONFLICT.
 
         given()
             .spec(adminSpec)
@@ -221,7 +219,7 @@ class RoomApiTest extends BaseApiTest {
         .when()
             .post("/rooms/add")
         .then()
-            .statusCode(anyOf(is(400), is(409), is(500)));
+            .statusCode(409);
     }
 
     @Test @Order(9)
@@ -279,7 +277,7 @@ class RoomApiTest extends BaseApiTest {
         .when()
             .get("/rooms/{id}", 999999L)
         .then()
-            .statusCode(anyOf(is(400), is(404)))
+            .statusCode(404)
             .body("message", containsStringIgnoringCase("not found"));
     }
 
@@ -315,7 +313,7 @@ class RoomApiTest extends BaseApiTest {
         .when()
             .put("/rooms/update")
         .then()
-            .statusCode(anyOf(is(400), is(404)))
+            .statusCode(404)
             .body("message", containsStringIgnoringCase("not found"));
     }
 
@@ -498,7 +496,7 @@ class RoomApiTest extends BaseApiTest {
         .when()
             .delete("/rooms/delete/{id}", 999999L)
         .then()
-            .statusCode(anyOf(is(400), is(404)))
+            .statusCode(404)
             .body("message", containsStringIgnoringCase("not found"));
     }
 }

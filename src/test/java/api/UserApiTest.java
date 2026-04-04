@@ -122,7 +122,7 @@ class UserApiTest extends BaseApiTest {
     }
 
     @Test @Order(6)
-    @DisplayName("TC-U-06 | loginUser | unknown email → 400/404")
+    @DisplayName("TC-U-06 | loginUser | unknown email → 404")
     void loginUser_fail_emailNotFound() {
         Map<String, String> loginBody = new HashMap<>();
         loginBody.put("email",    "ghost_" + UUID.randomUUID() + "@nowhere.com");
@@ -134,7 +134,7 @@ class UserApiTest extends BaseApiTest {
         .when()
             .post("/auth/login")
         .then()
-            .statusCode(anyOf(is(400), is(404)))
+            .statusCode(404)
             .body("message", containsStringIgnoringCase("email"));
     }
 
@@ -390,8 +390,7 @@ class UserApiTest extends BaseApiTest {
 
         given().spec(anonSpec).body(body)
             .when().post("/auth/register")
-            .then().statusCode(anyOf(is(400), is(422)))
-                   .statusCode(not(500));
+            .then().statusCode(400);
     }
 
     @Test @Order(20)
@@ -404,8 +403,7 @@ class UserApiTest extends BaseApiTest {
 
         given().spec(anonSpec).body(body)
             .when().post("/auth/register")
-            .then().statusCode(anyOf(is(400), is(422)))
-                   .statusCode(not(500));
+            .then().statusCode(400);
     }
 
     @Test @Order(21)
@@ -426,8 +424,7 @@ class UserApiTest extends BaseApiTest {
 
         given().spec(anonSpec).body(body)
             .when().post("/auth/register")
-            .then().statusCode(anyOf(is(400), is(422)))
-                   .statusCode(not(500));
+            .then().statusCode(400);
     }
 
     @Test @Order(23)

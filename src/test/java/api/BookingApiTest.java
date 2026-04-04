@@ -68,12 +68,12 @@ class BookingApiTest extends BaseApiTest {
         .when()
             .post("/bookings")
         .then()
-            .statusCode(anyOf(is(400), is(404)))
+            .statusCode(404)
             .body("message", containsStringIgnoringCase("room"));
     }
 
     @Test @Order(3)
-    @DisplayName("TC-B-03 | createBooking | checkIn in the past → 400/422")
+    @DisplayName("TC-B-03 | createBooking | checkIn in the past → 400")
     void createBooking_fail_checkInBeforeToday() {
         Map<String, Object> body = bookingPayload(SEED_ROOM_ID, yesterday(), tomorrow());
 
@@ -83,12 +83,12 @@ class BookingApiTest extends BaseApiTest {
         .when()
             .post("/bookings")
         .then()
-            .statusCode(anyOf(is(400), is(422)))
+            .statusCode(400)
             .body("message", containsStringIgnoringCase("before today"));
     }
 
     @Test @Order(4)
-    @DisplayName("TC-B-04 | createBooking | checkIn == checkOut → 400/422")
+    @DisplayName("TC-B-04 | createBooking | checkIn == checkOut → 400")
     void createBooking_fail_sameDate() {
         Map<String, Object> body = bookingPayload(SEED_ROOM_ID, tomorrow(), tomorrow());
 
@@ -98,7 +98,7 @@ class BookingApiTest extends BaseApiTest {
         .when()
             .post("/bookings")
         .then()
-            .statusCode(anyOf(is(400), is(422)))
+            .statusCode(400)
             .body("message", containsStringIgnoringCase("equal"));
     }
 
@@ -113,7 +113,7 @@ class BookingApiTest extends BaseApiTest {
         //
         // This test DOCUMENTS the bug:
         //   - Before fix: request succeeds (status 200)  ← BUG
-        //   - After fix:  status 400/422 with error msg  ← EXPECTED
+        //   - After fix:  status 400 with error msg       ← EXPECTED
         Map<String, Object> body = bookingPayload(SEED_ROOM_ID, inDays(3), tomorrow());
 
         given()
@@ -125,13 +125,13 @@ class BookingApiTest extends BaseApiTest {
             // ---- BEFORE FIX: uncomment to confirm bug exists ----
             // .statusCode(200)   // passes because comparison is always false
             //
-            // ---- AFTER FIX: switch to these assertions ----
-            .statusCode(anyOf(is(400), is(422)))
+            // ---- AFTER FIX: InvalidBookingStateAndDateException → 400 ----
+            .statusCode(400)
             .body("message", containsStringIgnoringCase("before check in"));
     }
 
     @Test @Order(6)
-    @DisplayName("TC-B-06 | createBooking | room not available for selected dates → 400/409/422")
+    @DisplayName("TC-B-06 | createBooking | room not available for selected dates → 400")
     void createBooking_fail_roomNotAvailable() {
         // TODO: test order dependency — this test relies on data created by a previous test, refactor to use @BeforeEach or independent fixtures
         Map<String, Object> body = bookingPayload(SEED_ROOM_ID, tomorrow(), inDays(3));
@@ -142,7 +142,7 @@ class BookingApiTest extends BaseApiTest {
         .when()
             .post("/bookings")
         .then()
-            .statusCode(anyOf(is(400), is(409), is(422)))
+            .statusCode(400)
             .body("message", containsStringIgnoringCase("not available"));
     }
 
@@ -172,8 +172,8 @@ class BookingApiTest extends BaseApiTest {
     }
 
     @Test @Order(8)
-    @DisplayName("TC-B-08 | createBooking | missing roomId → 400/404, message contains 'roomId'")
-    void createBooking_missingRoomId_returns400() {
+    @DisplayName("TC-B-08 | createBooking | missing roomId → 404, message contains 'roomId'")
+    void createBooking_missingRoomId_returns404() {
         Map<String, Object> body = new HashMap<>();
         body.put("checkInDate",  inDays(5));
         body.put("checkOutDate", inDays(7));
@@ -181,12 +181,12 @@ class BookingApiTest extends BaseApiTest {
         given().spec(customerSpec).body(body)
             .when().post("/bookings")
             .then()
-            .statusCode(anyOf(is(400), is(404)))
+            .statusCode(404)
             .body("message", containsStringIgnoringCase("roomId"));
     }
 
     @Test @Order(9)
-    @DisplayName("TC-B-09 | createBooking | missing checkInDate → 400/422, message contains 'required'")
+    @DisplayName("TC-B-09 | createBooking | missing checkInDate → 400, message contains 'required'")
     void createBooking_missingCheckIn_returns400() {
         Map<String, Object> body = new HashMap<>();
         body.put("roomId",       SEED_ROOM_ID);
@@ -195,12 +195,12 @@ class BookingApiTest extends BaseApiTest {
         given().spec(customerSpec).body(body)
             .when().post("/bookings")
             .then()
-            .statusCode(anyOf(is(400), is(422)))
+            .statusCode(400)
             .body("message", containsStringIgnoringCase("required"));
     }
 
     @Test @Order(10)
-    @DisplayName("TC-B-10 | createBooking | missing checkOutDate → 400/422, message contains 'required'")
+    @DisplayName("TC-B-10 | createBooking | missing checkOutDate → 400, message contains 'required'")
     void createBooking_missingCheckOut_returns400() {
         Map<String, Object> body = new HashMap<>();
         body.put("roomId",      SEED_ROOM_ID);
@@ -209,7 +209,7 @@ class BookingApiTest extends BaseApiTest {
         given().spec(customerSpec).body(body)
             .when().post("/bookings")
             .then()
-            .statusCode(anyOf(is(400), is(422)))
+            .statusCode(400)
             .body("message", containsStringIgnoringCase("required"));
     }
 
@@ -224,7 +224,7 @@ class BookingApiTest extends BaseApiTest {
         given().spec(customerSpec).body(body)
             .when().post("/bookings")
             .then()
-            .statusCode(anyOf(is(400), is(422)))
+            .statusCode(400)
             .body("message", not(emptyOrNullString()));
     }
 
@@ -266,14 +266,14 @@ class BookingApiTest extends BaseApiTest {
     }
 
     @Test @Order(14)
-    @DisplayName("TC-B-14 | findBookingByReferenceNo | unknown reference → 400/404")
+    @DisplayName("TC-B-14 | findBookingByReferenceNo | unknown reference → 404")
     void findBookingByReferenceNo_notFound() {
         given()
             .spec(customerSpec)
         .when()
             .get("/bookings/{ref}", "INVALID-REF-000")
         .then()
-            .statusCode(anyOf(is(400), is(404)))
+            .statusCode(404)
             .body("message", containsStringIgnoringCase("not found"));
     }
 
@@ -358,7 +358,7 @@ class BookingApiTest extends BaseApiTest {
     }
 
     @Test @Order(18)
-    @DisplayName("TC-B-18 | updateBooking | id=null → 400/404")
+    @DisplayName("TC-B-18 | updateBooking | id=null → 404")
     void updateBooking_fail_nullId() {
         Map<String, Object> updateBody = new HashMap<>();
         updateBody.put("bookingStatus", "CANCELLED");
@@ -370,12 +370,12 @@ class BookingApiTest extends BaseApiTest {
         .when()
             .put("/bookings/update")
         .then()
-            .statusCode(anyOf(is(400), is(404)))
+            .statusCode(404)
             .body("message", containsStringIgnoringCase("id"));
     }
 
     @Test @Order(19)
-    @DisplayName("TC-B-19 | updateBooking | id not found → 400/404")
+    @DisplayName("TC-B-19 | updateBooking | id not found → 404")
     void updateBooking_fail_idNotFound() {
         Map<String, Object> updateBody = new HashMap<>();
         updateBody.put("id",            999999L);
@@ -387,7 +387,7 @@ class BookingApiTest extends BaseApiTest {
         .when()
             .put("/bookings/update")
         .then()
-            .statusCode(anyOf(is(400), is(404)))
+            .statusCode(404)
             .body("message", containsStringIgnoringCase("not found"));
     }
 }
