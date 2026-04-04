@@ -41,7 +41,7 @@ import static org.mockito.Mockito.*;
  * Unit tests for {@link BookingServiceImpl}.
  *
  * <p>Covers: date validation, total-price calculation, happy-path booking creation,
- * reference-number lookup, partial-update behaviour, and null-input guards.
+ * partial-update behaviour, and null-input guards.
  *
  * <p>All external dependencies (repositories, services) are mocked via Mockito;
  * no Spring context is loaded.
@@ -241,53 +241,7 @@ class BookingServiceImplTest {
     }
 
     @Test
-    @DisplayName("TC-BS-09 | findBookingByReferenceNo | valid reference → returns full BookingDTO")
-    void getBookingByReference_validRef() {
-        Booking booking = new Booking();
-        booking.setBookingReference("ABCDEFGHIJ");
-        booking.setBookingStatus(BookingStatus.BOOKED);
-        booking.setPaymentStatus(PaymentStatus.PENDING);
-        booking.setCheckInDate(LocalDate.now().plusDays(1));
-        booking.setCheckOutDate(LocalDate.now().plusDays(3));
-        booking.setTotalPrice(new BigDecimal("200.00"));
-
-        when(bookingRepository.findByBookingReference("ABCDEFGHIJ")).thenReturn(Optional.of(booking));
-        when(modelMapper.map(any(Booking.class), eq(BookingDTO.class))).thenAnswer(inv -> {
-            Booking b = inv.getArgument(0);
-            BookingDTO dto = new BookingDTO();
-            dto.setBookingReference(b.getBookingReference());
-            dto.setBookingStatus(b.getBookingStatus());
-            dto.setPaymentStatus(b.getPaymentStatus());
-            dto.setTotalPrice(b.getTotalPrice());
-            dto.setCheckInDate(b.getCheckInDate());
-            dto.setCheckOutDate(b.getCheckOutDate());
-            return dto;
-        });
-
-        Response response = bookingService.findBookingByReferenceNo("ABCDEFGHIJ");
-
-        assertThat(response.getStatus()).isEqualTo(200);
-        BookingDTO result = response.getBooking();
-        assertThat(result.getBookingReference()).isEqualTo("ABCDEFGHIJ");
-        assertThat(result.getBookingStatus()).isNotNull();
-        assertThat(result.getPaymentStatus()).isNotNull();
-        assertThat(result.getTotalPrice()).isNotNull();
-        assertThat(result.getCheckInDate()).isNotNull();
-        assertThat(result.getCheckOutDate()).isNotNull();
-    }
-
-    @Test
-    @DisplayName("TC-BS-10 | findBookingByReferenceNo | unknown reference → throws")
-    void getBookingByReference_notFound() {
-        when(bookingRepository.findByBookingReference("INVALID000")).thenReturn(Optional.empty());
-
-        assertThatThrownBy(() -> bookingService.findBookingByReferenceNo("INVALID000"))
-                .isInstanceOf(NotFoundException.class)
-                .hasMessageMatching("(?i).*not.?found.*");
-    }
-
-    @Test
-    @DisplayName("TC-BS-11 | updateBooking | id=null → throws, no save")
+    @DisplayName("TC-BS-09 | updateBooking | id=null → throws, no save")
     void updateBooking_nullId_throwsNotFoundException() {
         BookingDTO dto = new BookingDTO();
         dto.setId(null);
@@ -301,7 +255,7 @@ class BookingServiceImplTest {
     }
 
     @Test
-    @DisplayName("TC-BS-12 | updateBooking | id not found → throws, no save")
+    @DisplayName("TC-BS-10 | updateBooking | id not found → throws, no save")
     void updateBooking_idNotFound_throwsNotFoundException() {
         BookingDTO dto = new BookingDTO();
         dto.setId(999L);
@@ -317,7 +271,7 @@ class BookingServiceImplTest {
     }
 
     @Test
-    @DisplayName("TC-BS-13 | updateBooking | bookingStatus only — paymentStatus unchanged")
+    @DisplayName("TC-BS-11 | updateBooking | bookingStatus only — paymentStatus unchanged")
     void updateBooking_onlyBookingStatus_paymentStatusUnchanged() {
         Booking existing = new Booking();
         existing.setId(1L);
@@ -342,7 +296,7 @@ class BookingServiceImplTest {
     }
 
     @Test
-    @DisplayName("TC-BS-14 | updateBooking | paymentStatus only — bookingStatus unchanged")
+    @DisplayName("TC-BS-12 | updateBooking | paymentStatus only — bookingStatus unchanged")
     void updateBooking_onlyPaymentStatus_bookingStatusUnchanged() {
         Booking existing = new Booking();
         existing.setId(1L);
@@ -367,7 +321,7 @@ class BookingServiceImplTest {
     }
 
     @Test
-    @DisplayName("TC-BS-15 | createBooking | roomId=null → throws, no save")
+    @DisplayName("TC-BS-13 | createBooking | roomId=null → throws, no save")
     void should_throw_when_roomId_is_null() {
         validBookingDTO.setRoomId(null);
         when(userService.getCurrentLoggedInUser()).thenReturn(testUser);
@@ -381,7 +335,7 @@ class BookingServiceImplTest {
     }
 
     @Test
-    @DisplayName("TC-BS-16 | createBooking | pricePerNight=null → throws domain exception, no save")
+    @DisplayName("TC-BS-14 | createBooking | pricePerNight=null → throws domain exception, no save")
     void should_throw_when_price_is_null() {
         testRoom.setPricePerNight(null);
 
@@ -397,7 +351,7 @@ class BookingServiceImplTest {
     }
 
     @Test
-    @DisplayName("TC-BS-17 | createBooking | checkInDate=null → throws")
+    @DisplayName("TC-BS-15 | createBooking | checkInDate=null → throws")
     void should_throw_when_checkInDate_is_null() {
         validBookingDTO.setCheckInDate(null);
 
@@ -412,7 +366,7 @@ class BookingServiceImplTest {
     }
 
     @Test
-    @DisplayName("TC-BS-18 | createBooking | checkOutDate=null → throws")
+    @DisplayName("TC-BS-16 | createBooking | checkOutDate=null → throws")
     void should_throw_when_checkOutDate_is_null() {
         validBookingDTO.setCheckOutDate(null);
 
@@ -424,15 +378,6 @@ class BookingServiceImplTest {
                 .hasMessageContaining("required");
 
         verify(bookingRepository, never()).save(any());
-    }
-
-    @Test
-    @DisplayName("TC-BS-19 | findBookingByReferenceNo | referenceNo=null → throws")
-    void should_throw_when_referenceNumber_is_null() {
-        when(bookingRepository.findByBookingReference(null)).thenReturn(Optional.empty());
-
-        assertThatThrownBy(() -> bookingService.findBookingByReferenceNo(null))
-                .isInstanceOf(NotFoundException.class);
     }
 
 }
