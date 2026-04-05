@@ -48,7 +48,6 @@ public class UserServiceImpl implements UserService {
                 .password(passwordEncoder.encode(registrationRequest.getPassword()))
                 .phoneNumber(registrationRequest.getPhoneNumber())
                 .role(role)
-                .isActive(Boolean.TRUE)
                 .build();
 
         userRepository.save(userToSave);
@@ -77,7 +76,6 @@ public class UserServiceImpl implements UserService {
                 .message("user logged in successfully")
                 .role(user.getRole())
                 .token(token)
-                .isActive(user.getIsActive())
                 .expirationTime("6 months")
                 .build();
     }
@@ -124,17 +122,17 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    public Response updateOwnAccount(UserDTO userDTO) {
+    public Response updateOwnAccount(UserUpdateRequest request) {
        User existingUser = getCurrentLoggedInUser();
        log.info("Inside update user");
 
-        if (userDTO.getEmail() != null) existingUser.setEmail(userDTO.getEmail());
-        if (userDTO.getFirstName() != null) existingUser.setFirstName(userDTO.getFirstName());
-        if (userDTO.getLastName() != null) existingUser.setLastName(userDTO.getLastName());
-        if (userDTO.getPhoneNumber() != null) existingUser.setPhoneNumber(userDTO.getPhoneNumber());
+        if (request.getEmail() != null) existingUser.setEmail(request.getEmail());
+        if (request.getFirstName() != null) existingUser.setFirstName(request.getFirstName());
+        if (request.getLastName() != null) existingUser.setLastName(request.getLastName());
+        if (request.getPhoneNumber() != null) existingUser.setPhoneNumber(request.getPhoneNumber());
 
-        if (userDTO.getPassword() != null && !userDTO.getPassword().isEmpty()) {
-            existingUser.setPassword(passwordEncoder.encode(userDTO.getPassword()));
+        if (request.getPassword() != null && !request.getPassword().isEmpty()) {
+            existingUser.setPassword(passwordEncoder.encode(request.getPassword()));
         }
         userRepository.save(existingUser);
 

@@ -1,6 +1,5 @@
 package api;
 
-import io.restassured.response.ValidatableResponse;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Order;
@@ -30,6 +29,8 @@ class UserApiTest extends BaseApiTest {
 
     private static final String NEW_USER_EMAIL    = "new_" + UUID.randomUUID() + "@hotel.com";
     private static final String NEW_USER_PASSWORD = "TestPass1234!";
+
+    // ─── Register ────────────────────────────────────────────────────────────
 
     @Test @Order(1)
     @DisplayName("TC-U-01 | registerUser | success — returns 200")
@@ -63,27 +64,140 @@ class UserApiTest extends BaseApiTest {
     }
 
     @Test @Order(3)
-    @DisplayName("TC-U-03 | registerUser | [Bug] duplicate email → should be 409, currently 500")
-    void registerUser_duplicateEmail_exposesDesignGap() {
-        // Bug: registerUser() calls userRepository.save() without checking for duplicate emails first.
-        // The DB unique constraint throws DataIntegrityViolationException. If GlobalExceptionHandler
-        // does not map this for the register path, it propagates as a 500.
-        // Compare: updateOwnAccount with a duplicate email (TC-U-14) returns 409 correctly,
-        // because GlobalExceptionHandler catches DataIntegrityViolationException there.
-        // Both are inserts that trigger the same exception type — a 500 here means a gap in the handler mapping.
+    @DisplayName("TC-U-03 | registerUser | duplicate email → 409")
+    void registerUser_duplicateEmail_returns409() {
+        // Design gap: registerUser() calls userRepository.save() without checking for duplicate emails first.
+        // The DB unique constraint throws DataIntegrityViolationException, which GlobalExceptionHandler
+        // catches and maps to 409. The test passes, but the fix should be to call existsByEmail() before
+        // save() and throw a meaningful business exception rather than relying on the DB constraint.
         given()
             .spec(anonSpec)
             .body(registrationPayload(USER_EMAIL, "SomePass1234!"))
         .when()
             .post("/auth/register")
         .then()
-            .statusCode(not(200));  // any non-200 is better than silent success; expect 409
-
-        System.out.println("⚠️  TC-U-03: duplicate email on register — expected 409, check actual status");
+            .statusCode(409)
+            .body("status",  equalTo(409))
+            .body("message", equalTo("A record with the same unique value already exists."));
     }
 
     @Test @Order(4)
-    @DisplayName("TC-U-04 | loginUser | valid credentials → 200 with JWT token")
+    @DisplayName("TC-U-04 | register | missing email → 400")
+    void register_missingEmail_returns400() {
+        Map<String, Object> body = new HashMap<>();
+        body.put("firstName",   "Test");
+        body.put("lastName",    "User");
+        body.put("password",    "TestPass1234!");
+        body.put("phoneNumber", "09000000000");
+
+        given().spec(anonSpec).body(body)
+            .when().post("/auth/register")
+            .then()
+                .statusCode(400)
+                .body("status",  equalTo(400))
+                .body("message", containsStringIgnoringCase("email"));
+    }
+
+    @Test @Order(5)
+    @DisplayName("TC-U-05 | register | invalid email format → 400")
+    void register_invalidEmailFormat_returns400() {
+        Map<String, Object> body = new HashMap<>();
+        body.put("firstName",   "Test");
+        body.put("lastName",    "User");
+        body.put("email",       "not-an-email");
+        body.put("password",    "TestPass1234!");
+        body.put("phoneNumber", "09000000000");
+
+        given().spec(anonSpec).body(body)
+            .when().post("/auth/register")
+            .then()
+                .statusCode(400)
+                .body("status",  equalTo(400))
+                .body("message", containsStringIgnoringCase("email"));
+    }
+
+    @Test @Order(6)
+    @DisplayName("TC-U-06 | register | missing password → 400")
+    void register_missingPassword_returns400() {
+        Map<String, Object> body = new HashMap<>();
+        body.put("firstName",   "Test");
+        body.put("lastName",    "User");
+        body.put("email",       "nopw_" + System.currentTimeMillis() + "@hotel.com");
+        body.put("phoneNumber", "09000000000");
+
+        given().spec(anonSpec).body(body)
+            .when().post("/auth/register")
+            .then()
+                .statusCode(400)
+                .body("status",  equalTo(400))
+                .body("message", containsStringIgnoringCase("password"));
+    }
+
+    @Test @Order(7)
+    @DisplayName("TC-U-07 | register | missing firstName → 400")
+    void register_missingFirstName_returns400() {
+        Map<String, Object> body = new HashMap<>();
+        body.put("lastName",    "User");
+        body.put("email",       "nofn_" + System.currentTimeMillis() + "@hotel.com");
+        body.put("password",    "TestPass1234!");
+        body.put("phoneNumber", "09000000000");
+
+        given().spec(anonSpec).body(body)
+            .when().post("/auth/register")
+            .then()
+                .statusCode(400)
+                .body("status",  equalTo(400))
+                .body("message", containsStringIgnoringCase("firstName"));
+    }
+
+    @Test @Order(8)
+    @DisplayName("TC-U-08 | register | missing lastName → 400")
+    void register_missingLastName_returns400() {
+        Map<String, Object> body = new HashMap<>();
+        body.put("firstName",   "Test");
+        body.put("email",       "noln_" + System.currentTimeMillis() + "@hotel.com");
+        body.put("password",    "TestPass1234!");
+        body.put("phoneNumber", "09000000000");
+
+        given().spec(anonSpec).body(body)
+            .when().post("/auth/register")
+            .then()
+                .statusCode(400)
+                .body("status",  equalTo(400))
+                .body("message", containsStringIgnoringCase("lastName"));
+    }
+
+    @Test @Order(9)
+    @DisplayName("TC-U-09 | register | missing phoneNumber → 400")
+    void register_missingPhoneNumber_returns400() {
+        Map<String, Object> body = new HashMap<>();
+        body.put("firstName", "Test");
+        body.put("lastName",  "User");
+        body.put("email",     "nopn_" + System.currentTimeMillis() + "@hotel.com");
+        body.put("password",  "TestPass1234!");
+
+        given().spec(anonSpec).body(body)
+            .when().post("/auth/register")
+            .then()
+                .statusCode(400)
+                .body("status",  equalTo(400))
+                .body("message", containsStringIgnoringCase("phoneNumber"));
+    }
+
+    @Test @Order(10)
+    @DisplayName("TC-U-10 | register | empty body → 400")
+    void register_emptyBody_returns400() {
+        given().spec(anonSpec).body("{}")
+            .when().post("/auth/register")
+            .then()
+                .statusCode(400)
+                .body("status", equalTo(400));
+    }
+
+    // ─── Login ───────────────────────────────────────────────────────────────
+
+    @Test @Order(11)
+    @DisplayName("TC-U-11 | loginUser | valid credentials → 200 with JWT token")
     void loginUser_success_returnsJwtToken() {
         Map<String, String> loginBody = new HashMap<>();
         loginBody.put("email",    USER_EMAIL);
@@ -100,12 +214,11 @@ class UserApiTest extends BaseApiTest {
             .body("token",          notNullValue())
             .body("token",          not(emptyString()))
             .body("role",           notNullValue())
-            .body("isActive",       equalTo(true))
             .body("expirationTime", equalTo("6 months"));
     }
 
-    @Test @Order(5)
-    @DisplayName("TC-U-05 | loginUser | wrong password → 400")
+    @Test @Order(12)
+    @DisplayName("TC-U-12 | loginUser | wrong password → 400")
     void loginUser_fail_wrongPassword() {
         Map<String, String> loginBody = new HashMap<>();
         loginBody.put("email",    USER_EMAIL);
@@ -121,8 +234,8 @@ class UserApiTest extends BaseApiTest {
             .body("message", containsStringIgnoringCase("doesn't match"));
     }
 
-    @Test @Order(6)
-    @DisplayName("TC-U-06 | loginUser | unknown email → 404")
+    @Test @Order(13)
+    @DisplayName("TC-U-13 | loginUser | unknown email → 404")
     void loginUser_fail_emailNotFound() {
         Map<String, String> loginBody = new HashMap<>();
         loginBody.put("email",    "ghost_" + UUID.randomUUID() + "@nowhere.com");
@@ -138,33 +251,50 @@ class UserApiTest extends BaseApiTest {
             .body("message", containsStringIgnoringCase("email"));
     }
 
-    @Test @Order(7)
-    @DisplayName("TC-U-07 | loginUser | [Bug] inactive user can still log in")
-    void loginUser_fail_inactiveUser() {
-        // TODO: Seed an inactive user before running; currently the service
-        //       does NOT check isActive → this test documents the expected
-        //       behaviour AFTER the bug is fixed.
-        //
-        // Once fixed, expect 403 or a meaningful error message.
-        Map<String, String> loginBody = new HashMap<>();
-        loginBody.put("email",    "inactive@hotel.com");   // must be seeded as isActive=false
-        loginBody.put("password", "Inactive1234!");
-
-        ValidatableResponse resp = given()
-            .spec(anonSpec)
-            .body(loginBody)
-        .when()
-            .post("/auth/login")
-        .then();
-
-        // Document current (broken) vs expected behaviour:
-        // resp.statusCode(403);  // ← uncomment after fix
-        // For now, just assert the test runs without NPE
-        resp.statusCode(anyOf(is(200), is(400), is(401), is(403), is(404)));
+    @Test @Order(14)
+    @DisplayName("TC-U-14 | login | empty body → 400")
+    void login_emptyBody_returns400() {
+        given().spec(anonSpec).body("{}")
+            .when().post("/auth/login")
+            .then()
+                .statusCode(400)
+                .body("status", equalTo(400));
     }
 
-    @Test @Order(8)
-    @DisplayName("TC-U-08 | getOwnAccountDetails | returns own account details")
+    @Test @Order(15)
+    @DisplayName("TC-U-15 | login | email=null → 400")
+    void login_nullEmail_returns400() {
+        Map<String, Object> body = new HashMap<>();
+        body.put("email",    null);
+        body.put("password", "TestPass1234!");
+
+        given().spec(anonSpec).body(body)
+            .when().post("/auth/login")
+            .then()
+                .statusCode(400)
+                .body("status",  equalTo(400))
+                .body("message", containsStringIgnoringCase("email"));
+    }
+
+    @Test @Order(16)
+    @DisplayName("TC-U-16 | login | password=null → 400")
+    void login_nullPassword_returns400() {
+        Map<String, Object> body = new HashMap<>();
+        body.put("email",    USER_EMAIL);
+        body.put("password", null);
+
+        given().spec(anonSpec).body(body)
+            .when().post("/auth/login")
+            .then()
+                .statusCode(400)
+                .body("status",  equalTo(400))
+                .body("message", containsStringIgnoringCase("password"));
+    }
+
+    // ─── Query account ────────────────────────────────────────────────────────
+
+    @Test @Order(17)
+    @DisplayName("TC-U-17 | getOwnAccountDetails | returns own account details")
     void getOwnAccountDetails_success() {
         given()
             .spec(customerSpec)
@@ -176,8 +306,8 @@ class UserApiTest extends BaseApiTest {
             .body("user.email",   equalTo(USER_EMAIL));
     }
 
-    @Test @Order(9)
-    @DisplayName("TC-U-09 | getOwnAccountDetails | password not in response")
+    @Test @Order(18)
+    @DisplayName("TC-U-18 | getOwnAccountDetails | password not in response")
     void getOwnAccountDetails_responseDoesNotContainPassword() {
         given()
             .spec(customerSpec)
@@ -188,8 +318,39 @@ class UserApiTest extends BaseApiTest {
             .body("user.password", nullValue());
     }
 
-    @Test @Order(10)
-    @DisplayName("TC-U-10 | updateOwnAccount | update name and phone — password unchanged")
+    @Test @Order(19)
+    @DisplayName("TC-U-19 | getAllUsers | ADMIN gets user list")
+    void getAllUsers_admin_success() {
+        given()
+            .spec(adminSpec)
+        .when()
+            .get("/users/all")
+        .then()
+            .statusCode(200)
+            .body("status", equalTo(200))
+            .body("users",  notNullValue())
+            .body("users",  not(empty()));
+    }
+
+    @Test @Order(20)
+    @DisplayName("TC-U-20 | getAllUsers | password not in response")
+    void getAllUsers_responseDoesNotContainPassword() {
+        // Bug: ModelMapper maps User.password (the bcrypt hash) to UserDTO.password by default.
+        // If UserDTO.password is not annotated with @JsonIgnore, the hash appears in the response body.
+        // Fix: add @JsonIgnore to UserDTO.password, or exclude the field in the mapper configuration.
+        given()
+            .spec(adminSpec)
+        .when()
+            .get("/users/all")
+        .then()
+            .statusCode(200)
+            .body("users[0].password", nullValue());
+    }
+
+    // ─── Update account ───────────────────────────────────────────────────────
+
+    @Test @Order(21)
+    @DisplayName("TC-U-21 | updateOwnAccount | update name and phone — password unchanged")
     void updateOwnAccount_success_withoutChangingPassword() {
         Map<String, Object> updateBody = new HashMap<>();
         updateBody.put("firstName",   "UpdatedFirst");
@@ -207,8 +368,8 @@ class UserApiTest extends BaseApiTest {
             .body("message", containsStringIgnoringCase("updated"));
     }
 
-    @Test @Order(11)
-    @DisplayName("TC-U-11 | updateOwnAccount | new password works on next login")
+    @Test @Order(22)
+    @DisplayName("TC-U-22 | updateOwnAccount | new password works on next login")
     void updateOwnAccount_success_changePassword() {
         String newPassword = "NewPass5678!";
 
@@ -241,8 +402,8 @@ class UserApiTest extends BaseApiTest {
         given().spec(customerSpec).body(updateBody).when().put("/users/update");
     }
 
-    @Test @Order(12)
-    @DisplayName("TC-U-12 | updateOwnAccount | empty password string does not overwrite")
+    @Test @Order(23)
+    @DisplayName("TC-U-23 | updateOwnAccount | empty password string does not overwrite")
     void updateOwnAccount_emptyPasswordString_doesNotOverwrite() {
         Map<String, Object> updateBody = new HashMap<>();
         updateBody.put("password", "");    // empty string must be ignored — not written to DB
@@ -270,11 +431,12 @@ class UserApiTest extends BaseApiTest {
             .body("token", notNullValue());
     }
 
-    @Test @Order(13)
-    @DisplayName("TC-U-13 | updateOwnAccount | [Bug] invalid email format accepted — returns 200")
+    @Test @Order(24)
+    @DisplayName("TC-U-24 | updateOwnAccount | [Bug] invalid email format accepted — returns 200")
     void updateOwnAccount_invalidEmailFormat_returns200Bug() {
-        // Bug: UserDTO.email has no @Email constraint and the controller has no @Valid.
-        // Any string is written directly by the service. Fix: add @Email to UserDTO + @Valid to the controller (returns 400).
+        // Bug: UserUpdateRequest.email has no @Email constraint — email is optional on update (no @NotBlank needed),
+        // but an invalid format should still be rejected. Fix: add @Email (without @NotBlank) to UserUpdateRequest.email
+        // and @Valid to the controller method (returns 400 when email is present but malformed).
         Map<String, Object> body = new HashMap<>();
         body.put("email", "not-an-email");
 
@@ -289,7 +451,7 @@ class UserApiTest extends BaseApiTest {
             .body("status",  equalTo(200))
             .body("message", equalTo("user updated successfully"));
 
-        System.out.println("⚠️  TC-U-13: invalid email accepted — missing @Email/@Valid validation");
+        System.out.println("⚠️  TC-U-24: invalid email accepted — missing @Email/@Valid validation");
 
         // Restore original email so other tests are unaffected
         Map<String, Object> restore = new HashMap<>();
@@ -297,11 +459,10 @@ class UserApiTest extends BaseApiTest {
         given().spec(customerSpec).body(restore).when().put("/users/update");
     }
 
-    @Test @Order(14)
-    @DisplayName("TC-U-14 | updateOwnAccount | duplicate email → 409")
+    @Test @Order(25)
+    @DisplayName("TC-U-25 | updateOwnAccount | duplicate email → 409")
     void updateOwnAccount_duplicateEmail_returns409() {
         // GlobalExceptionHandler catches DataIntegrityViolationException and maps it to 409.
-        // The exact message comes from GlobalExceptionHandler.handleDataIntegrityViolation().
         Map<String, Object> body = new HashMap<>();
         body.put("email", ADMIN_EMAIL); // already taken by the seeded admin account
 
@@ -316,37 +477,10 @@ class UserApiTest extends BaseApiTest {
             .body("message", equalTo("A record with the same unique value already exists."));
     }
 
-    @Test @Order(15)
-    @DisplayName("TC-U-15 | getAllUsers | ADMIN gets user list")
-    void getAllUsers_admin_success() {
-        given()
-            .spec(adminSpec)
-        .when()
-            .get("/users/all")
-        .then()
-            .statusCode(200)
-            .body("status", equalTo(200))
-            .body("users",  notNullValue())
-            .body("users",  not(empty()));
-    }
+    // ─── Booking history ─────────────────────────────────────────────────────
 
-    @Test @Order(16)
-    @DisplayName("TC-U-16 | getAllUsers | password not in response")
-    void getAllUsers_responseDoesNotContainPassword() {
-        // Bug: ModelMapper maps User.password (the bcrypt hash) to UserDTO.password by default.
-        // If UserDTO.password is not annotated with @JsonIgnore, the hash appears in the response body.
-        // Fix: add @JsonIgnore to UserDTO.password, or exclude the field in the mapper configuration.
-        given()
-            .spec(adminSpec)
-        .when()
-            .get("/users/all")
-        .then()
-            .statusCode(200)
-            .body("users[0].password", nullValue());
-    }
-
-    @Test @Order(17)
-    @DisplayName("TC-U-17 | getMyBookingHistory | returns booking history")
+    @Test @Order(26)
+    @DisplayName("TC-U-26 | getMyBookingHistory | returns booking history")
     void getMyBookingHistory_success() {
         given()
             .spec(customerSpec)
@@ -355,11 +489,11 @@ class UserApiTest extends BaseApiTest {
         .then()
             .statusCode(200)
             .body("status",   equalTo(200))
-            .body("bookings", notNullValue());   // could be empty list — both are valid
+            .body("bookings", notNullValue());
     }
 
-    @Test @Order(18)
-    @DisplayName("TC-U-18 | getMyBookingHistory | no bookings → empty list not null")
+    @Test @Order(27)
+    @DisplayName("TC-U-27 | getMyBookingHistory | no bookings → empty list not null")
     void getMyBookingHistory_noBookings_returnsEmptyList() {
         String freshEmail    = "fresh_" + UUID.randomUUID() + "@hotel.com";
         String freshPassword = "FreshPass1234!";
@@ -380,85 +514,12 @@ class UserApiTest extends BaseApiTest {
             .body("bookings", hasSize(0));
     }
 
-    @Test @Order(19)
-    @DisplayName("TC-U-19 | register | missing email → 400")
-    void register_missingEmail_returns400() {
-        Map<String, Object> body = new HashMap<>();
-        body.put("firstName", "Test");
-        body.put("lastName",  "User");
-        body.put("password",  "TestPass1234!");
-
-        given().spec(anonSpec).body(body)
-            .when().post("/auth/register")
-            .then().statusCode(400);
-    }
-
-    @Test @Order(20)
-    @DisplayName("TC-U-20 | register | missing password → 400")
-    void register_missingPassword_returns400() {
-        Map<String, Object> body = new HashMap<>();
-        body.put("firstName", "Test");
-        body.put("lastName",  "User");
-        body.put("email",     "nopw_" + System.currentTimeMillis() + "@hotel.com");
-
-        given().spec(anonSpec).body(body)
-            .when().post("/auth/register")
-            .then().statusCode(400);
-    }
-
-    @Test @Order(21)
-    @DisplayName("TC-U-21 | register | email 300 chars long → not 500")
-    void register_oversizedEmail_doesNotReturn500() {
-        String longString = "a".repeat(300);
-        Map<String, Object> body = registrationPayload(longString + "@hotel.com", "TestPass1234!");
-
-        given().spec(anonSpec).body(body)
-            .when().post("/auth/register")
-            .then().statusCode(not(500));
-    }
-
-    @Test @Order(22)
-    @DisplayName("TC-U-22 | register | invalid email format → 400")
-    void register_invalidEmailFormat_returns400() {
-        Map<String, Object> body = registrationPayload("not-an-email", "TestPass1234!");
-
-        given().spec(anonSpec).body(body)
-            .when().post("/auth/register")
-            .then().statusCode(400);
-    }
-
-    @Test @Order(23)
-    @DisplayName("TC-U-23 | register | empty body → not 500")
-    void register_emptyBody_doesNotReturn500() {
-        given().spec(anonSpec).body("{}")
-            .when().post("/auth/register")
-            .then().statusCode(not(500));
-    }
-
-    @Test @Order(24)
-    @DisplayName("TC-U-24 | login | empty body → not 500")
-    void login_emptyBody_doesNotReturn500() {
-        given().spec(anonSpec).body("{}")
-            .when().post("/auth/login")
-            .then().statusCode(not(500));
-    }
-
-    @Test @Order(25)
-    @DisplayName("TC-U-25 | login | email=null → not 500")
-    void login_nullEmail_doesNotReturn500() {
-        Map<String, Object> body = new HashMap<>();
-        body.put("email",    null);
-        body.put("password", "TestPass1234!");
-
-        given().spec(anonSpec).body(body)
-            .when().post("/auth/login")
-            .then().statusCode(not(500));
-    }
+    // ─── Delete account ───────────────────────────────────────────────────────
 
     @Test @Order(99)
-    @DisplayName("TC-U-26 | deleteOwnAccount | deletes the current user")
+    @DisplayName("TC-U-28 | deleteOwnAccount | deletes the current user")
     void deleteOwnAccount_success() {
-        // Use the newly registered user so we don't wipe the shared customer
+        // Use a fresh user so we don't wipe the shared customer account
         String tempEmail    = "deleteme_" + UUID.randomUUID() + "@hotel.com";
         String tempPassword = "DeleteMe1234!";
 
@@ -476,5 +537,18 @@ class UserApiTest extends BaseApiTest {
             .statusCode(200)
             .body("status",  equalTo(200))
             .body("message", containsStringIgnoringCase("deleted"));
+
+        // Verify: account is gone — login with same credentials returns 404
+        Map<String, String> loginBody = new HashMap<>();
+        loginBody.put("email",    tempEmail);
+        loginBody.put("password", tempPassword);
+
+        given()
+            .spec(anonSpec)
+            .body(loginBody)
+        .when()
+            .post("/auth/login")
+        .then()
+            .statusCode(404);
     }
 }

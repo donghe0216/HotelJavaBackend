@@ -1,36 +1,25 @@
 package com.example.HotelBooking.dtos;
 
-import com.example.HotelBooking.enums.UserRole;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonInclude;
+import jakarta.validation.constraints.Email;
 import lombok.AllArgsConstructor;
-import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-
-import java.time.LocalDateTime;
 
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
-@Builder
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonIgnoreProperties(ignoreUnknown = true)
-public class UserDTO {
+public class UserUpdateRequest {
 
-    private Long id;
-
+    // All fields optional — only provided fields are applied to the existing record
+    @Email(message = "Email format is invalid")
     private String email;
-    @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
+
     private String password;
     private String firstName;
     private String lastName;
-
     private String phoneNumber;
-
-    private UserRole role; //e.g CUSTOMER, ADMIN
-
-    private LocalDateTime createdAt;
-
 }

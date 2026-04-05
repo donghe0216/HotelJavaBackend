@@ -1,8 +1,9 @@
 package com.example.HotelBooking.controllers;
 
 import com.example.HotelBooking.dtos.Response;
-import com.example.HotelBooking.dtos.UserDTO;
+import com.example.HotelBooking.dtos.UserUpdateRequest;
 import com.example.HotelBooking.services.UserService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -23,8 +24,8 @@ public class UserController {
 
 
     @PutMapping("/update")
-    public ResponseEntity<Response> updateOwnAccount(@RequestBody UserDTO userDTO){
-        return ResponseEntity.ok(userService.updateOwnAccount(userDTO));
+    public ResponseEntity<Response> updateOwnAccount(@RequestBody @Valid UserUpdateRequest request){
+        return ResponseEntity.ok(userService.updateOwnAccount(request));
     }
 
     @DeleteMapping("/delete")
