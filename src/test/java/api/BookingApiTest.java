@@ -58,38 +58,7 @@ class BookingApiTest extends BaseApiTest {
     }
 
     @Test @Order(2)
-    @DisplayName("TC-B-02 | createBooking | room not found → 404")
-    void createBooking_fail_roomNotFound() {
-        Map<String, Object> body = bookingPayload(999999L, tomorrow(), inDays(3));
-
-        given()
-            .spec(customerSpec)
-            .body(body)
-        .when()
-            .post("/bookings")
-        .then()
-            .statusCode(404)
-            .body("message", containsStringIgnoringCase("room"));
-    }
-
-    @Test @Order(3)
-    @DisplayName("TC-B-03 | createBooking | room not available for selected dates → 400")
-    void createBooking_fail_roomNotAvailable() {
-        // TODO: test order dependency — this test relies on data created by a previous test, refactor to use @BeforeEach or independent fixtures
-        Map<String, Object> body = bookingPayload(SEED_ROOM_ID, tomorrow(), inDays(3));
-
-        given()
-            .spec(customerSpec)
-            .body(body)
-        .when()
-            .post("/bookings")
-        .then()
-            .statusCode(400)
-            .body("message", containsStringIgnoringCase("not available"));
-    }
-
-    @Test @Order(4)
-    @DisplayName("TC-B-04 | createBooking | new booking has status BOOKED and payment PENDING")
+    @DisplayName("TC-B-02 | createBooking | new booking has status BOOKED and payment PENDING")
     void createBooking_newBooking_hasCorrectInitialStatus() {
         // Use a different date range to avoid conflict with TC-B-01
         Map<String, Object> body = bookingPayload(SEED_ROOM_ID, inDays(10), inDays(12));
@@ -111,6 +80,37 @@ class BookingApiTest extends BaseApiTest {
             .statusCode(200)
             .body("booking.bookingStatus",  equalTo("BOOKED"))
             .body("booking.paymentStatus",  equalTo("PENDING"));
+    }
+
+    @Test @Order(3)
+    @DisplayName("TC-B-03 | createBooking | room not found → 404")
+    void createBooking_fail_roomNotFound() {
+        Map<String, Object> body = bookingPayload(999999L, tomorrow(), inDays(3));
+
+        given()
+            .spec(customerSpec)
+            .body(body)
+        .when()
+            .post("/bookings")
+        .then()
+            .statusCode(404)
+            .body("message", containsStringIgnoringCase("room"));
+    }
+
+    @Test @Order(4)
+    @DisplayName("TC-B-04 | createBooking | room not available for selected dates → 400")
+    void createBooking_fail_roomNotAvailable() {
+        // TODO: test order dependency — this test relies on data created by a previous test, refactor to use @BeforeEach or independent fixtures
+        Map<String, Object> body = bookingPayload(SEED_ROOM_ID, tomorrow(), inDays(3));
+
+        given()
+            .spec(customerSpec)
+            .body(body)
+        .when()
+            .post("/bookings")
+        .then()
+            .statusCode(400)
+            .body("message", containsStringIgnoringCase("not available"));
     }
 
     @Test @Order(5)
