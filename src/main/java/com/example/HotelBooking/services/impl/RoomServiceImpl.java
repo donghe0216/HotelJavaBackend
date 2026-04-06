@@ -191,7 +191,7 @@ public class RoomServiceImpl implements RoomService {
     public Response searchRoom(String input) {
 
         if (input == null || input.isBlank()) {
-            throw new IllegalArgumentException("keyword cannot be empty");
+            throw new NameValueRequiredException("keyword cannot be empty");
         }
 
         List<Room> roomList = roomRepository.searchRooms(input);

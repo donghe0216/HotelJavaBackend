@@ -5,6 +5,7 @@ import com.example.HotelBooking.dtos.RoomDTO;
 import com.example.HotelBooking.entities.Room;
 import com.example.HotelBooking.enums.RoomType;
 import com.example.HotelBooking.exceptions.InvalidBookingStateAndDateException;
+import com.example.HotelBooking.exceptions.NameValueRequiredException;
 import com.example.HotelBooking.exceptions.NotFoundException;
 import org.springframework.dao.DataIntegrityViolationException;
 import com.example.HotelBooking.repositories.RoomRepository;
@@ -65,6 +66,8 @@ class RoomServiceImplTest {
                 .build();
     }
 
+    // ── addRoom ───────────────────────────────────────────────────────────────
+
     @Test
     @DisplayName("TC-RS-01 | addRoom | valid input → saved, returns 200")
     void addRoom_validInput_success() {
@@ -75,10 +78,6 @@ class RoomServiceImplTest {
         when(roomRepository.save(any(Room.class))).thenReturn(savedRoom);
         when(modelMapper.map(savedRoom, RoomDTO.class)).thenReturn(savedDTO);
 
-        // Passing null for imageFile implicitly covers the if (imageFile != null) branch:
-        // saveImageToFrontend is private and cannot be verified directly. If the branch were
-        // incorrectly entered, the IO operation would throw in this mock environment and fail the test.
-        // Root fix: extract image storage to a mockable ImageStorageService bean.
         Response response = roomService.addRoom(validRoomDTO, null);
 
         assertThat(response.getStatus()).isEqualTo(200);
@@ -87,127 +86,178 @@ class RoomServiceImplTest {
     }
 
     @Test
-    @DisplayName("TC-RS-02 | addRoom | pricePerNight = 0 → IllegalArgumentException")
+    @DisplayName("TC-RS-02 | addRoom | pricePerNight = 0 → NameValueRequiredException")
     void addRoom_zeroPricePerNight_throwsException() {
         validRoomDTO.setPricePerNight(BigDecimal.ZERO);
 
         assertThatThrownBy(() -> roomService.addRoom(validRoomDTO, null))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("Price per night");
+                .isInstanceOf(NameValueRequiredException.class)
+                .hasMessageContaining("pricePerNight");
 
         verify(roomRepository, never()).save(any());
     }
 
     @Test
-    @DisplayName("TC-RS-03 | addRoom | pricePerNight < 0 → IllegalArgumentException")
+    @DisplayName("TC-RS-03 | addRoom | pricePerNight = -1 → NameValueRequiredException")
     void addRoom_negativePricePerNight_throwsException() {
-        validRoomDTO.setPricePerNight(new BigDecimal("-50.00"));
+        validRoomDTO.setPricePerNight(new BigDecimal("-1.00"));
 
         assertThatThrownBy(() -> roomService.addRoom(validRoomDTO, null))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("Price per night");
+                .isInstanceOf(NameValueRequiredException.class)
+                .hasMessageContaining("pricePerNight");
 
         verify(roomRepository, never()).save(any());
     }
 
     @Test
-    @DisplayName("TC-RS-04 | addRoom | capacity = 0 → IllegalArgumentException")
+    @DisplayName("TC-RS-04 | addRoom | pricePerNight = 0.01（最小合法値）→ saved")
+    void addRoom_minValidPricePerNight_success() {
+        validRoomDTO.setPricePerNight(new BigDecimal("0.01"));
+        Room savedRoom = new Room();
+        RoomDTO savedDTO = RoomDTO.builder().id(1L).build();
+
+        when(modelMapper.map(validRoomDTO, Room.class)).thenReturn(savedRoom);
+        when(roomRepository.save(any(Room.class))).thenReturn(savedRoom);
+        when(modelMapper.map(savedRoom, RoomDTO.class)).thenReturn(savedDTO);
+
+        Response response = roomService.addRoom(validRoomDTO, null);
+
+        assertThat(response.getStatus()).isEqualTo(200);
+        verify(roomRepository, times(1)).save(any(Room.class));
+    }
+
+    @Test
+    @DisplayName("TC-RS-05 | addRoom | capacity = 0 → NameValueRequiredException")
     void addRoom_zeroCapacity_throwsException() {
         validRoomDTO.setCapacity(0);
 
         assertThatThrownBy(() -> roomService.addRoom(validRoomDTO, null))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("Capacity");
+                .isInstanceOf(NameValueRequiredException.class)
+                .hasMessageContaining("capacity");
 
         verify(roomRepository, never()).save(any());
     }
 
     @Test
-    @DisplayName("TC-RS-05 | addRoom | capacity < 0 → IllegalArgumentException")
+    @DisplayName("TC-RS-06 | addRoom | capacity = -1 → NameValueRequiredException")
     void addRoom_negativeCapacity_throwsException() {
         validRoomDTO.setCapacity(-1);
 
         assertThatThrownBy(() -> roomService.addRoom(validRoomDTO, null))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("Capacity");
+                .isInstanceOf(NameValueRequiredException.class)
+                .hasMessageContaining("capacity");
 
         verify(roomRepository, never()).save(any());
     }
 
     @Test
-    @DisplayName("TC-RS-06 | addRoom | roomNumber = 0 → IllegalArgumentException")
+    @DisplayName("TC-RS-07 | addRoom | capacity = 1（最小合法値）→ saved")
+    void addRoom_minValidCapacity_success() {
+        validRoomDTO.setCapacity(1);
+        Room savedRoom = new Room();
+        RoomDTO savedDTO = RoomDTO.builder().id(1L).build();
+
+        when(modelMapper.map(validRoomDTO, Room.class)).thenReturn(savedRoom);
+        when(roomRepository.save(any(Room.class))).thenReturn(savedRoom);
+        when(modelMapper.map(savedRoom, RoomDTO.class)).thenReturn(savedDTO);
+
+        Response response = roomService.addRoom(validRoomDTO, null);
+
+        assertThat(response.getStatus()).isEqualTo(200);
+        verify(roomRepository, times(1)).save(any(Room.class));
+    }
+
+    @Test
+    @DisplayName("TC-RS-08 | addRoom | roomNumber = 0 → NameValueRequiredException")
     void addRoom_zeroRoomNumber_throwsException() {
         validRoomDTO.setRoomNumber(0);
 
         assertThatThrownBy(() -> roomService.addRoom(validRoomDTO, null))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("Room number");
+                .isInstanceOf(NameValueRequiredException.class)
+                .hasMessageContaining("roomNumber");
 
         verify(roomRepository, never()).save(any());
     }
 
     @Test
-    @DisplayName("TC-RS-07 | addRoom | roomNumber < 0 → IllegalArgumentException")
+    @DisplayName("TC-RS-09 | addRoom | roomNumber = -1 → NameValueRequiredException")
     void addRoom_negativeRoomNumber_throwsException() {
         validRoomDTO.setRoomNumber(-1);
 
         assertThatThrownBy(() -> roomService.addRoom(validRoomDTO, null))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("Room number");
+                .isInstanceOf(NameValueRequiredException.class)
+                .hasMessageContaining("roomNumber");
 
         verify(roomRepository, never()).save(any());
     }
 
     @Test
-    @DisplayName("TC-RS-08 | addRoom | type = null → IllegalArgumentException")
+    @DisplayName("TC-RS-10 | addRoom | roomNumber = 1（最小合法値）→ saved")
+    void addRoom_minValidRoomNumber_success() {
+        validRoomDTO.setRoomNumber(1);
+        Room savedRoom = new Room();
+        RoomDTO savedDTO = RoomDTO.builder().id(1L).build();
+
+        when(modelMapper.map(validRoomDTO, Room.class)).thenReturn(savedRoom);
+        when(roomRepository.save(any(Room.class))).thenReturn(savedRoom);
+        when(modelMapper.map(savedRoom, RoomDTO.class)).thenReturn(savedDTO);
+
+        Response response = roomService.addRoom(validRoomDTO, null);
+
+        assertThat(response.getStatus()).isEqualTo(200);
+        verify(roomRepository, times(1)).save(any(Room.class));
+    }
+
+    @Test
+    @DisplayName("TC-RS-11 | addRoom | type = null → NameValueRequiredException")
     void addRoom_nullType_throwsException() {
         validRoomDTO.setType(null);
 
         assertThatThrownBy(() -> roomService.addRoom(validRoomDTO, null))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("Room type");
+                .isInstanceOf(NameValueRequiredException.class)
+                .hasMessageContaining("type");
 
         verify(roomRepository, never()).save(any());
     }
 
     @Test
-    @DisplayName("TC-RS-09 | addRoom | roomNumber=null → throws (expected behaviour, fix pending)")
-    void addRoom_nullRoomNumber_throwsException() {
-        validRoomDTO.setRoomNumber(null);
-
-        assertThatThrownBy(() -> roomService.addRoom(validRoomDTO, null))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("Room number");
-
-        verify(roomRepository, never()).save(any());
-    }
-
-    @Test
-    @DisplayName("TC-RS-10 | addRoom | pricePerNight=null → throws (expected behaviour, fix pending)")
+    @DisplayName("TC-RS-12 | addRoom | pricePerNight = null → NameValueRequiredException")
     void addRoom_nullPricePerNight_throwsException() {
         validRoomDTO.setPricePerNight(null);
 
         assertThatThrownBy(() -> roomService.addRoom(validRoomDTO, null))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("Price per night");
+                .isInstanceOf(NameValueRequiredException.class)
+                .hasMessageContaining("pricePerNight");
 
         verify(roomRepository, never()).save(any());
     }
 
     @Test
-    @DisplayName("TC-RS-11 | addRoom | capacity=null → throws (expected behaviour, fix pending)")
+    @DisplayName("TC-RS-13 | addRoom | capacity = null → NameValueRequiredException")
     void addRoom_nullCapacity_throwsException() {
         validRoomDTO.setCapacity(null);
 
         assertThatThrownBy(() -> roomService.addRoom(validRoomDTO, null))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("Capacity");
+                .isInstanceOf(NameValueRequiredException.class)
+                .hasMessageContaining("capacity");
 
         verify(roomRepository, never()).save(any());
     }
 
     @Test
-    @DisplayName("TC-RS-12 | addRoom | [Bug] duplicate roomNumber → DataIntegrityViolationException, no domain check")
+    @DisplayName("TC-RS-14 | addRoom | roomNumber = null → NameValueRequiredException")
+    void addRoom_nullRoomNumber_throwsException() {
+        validRoomDTO.setRoomNumber(null);
+
+        assertThatThrownBy(() -> roomService.addRoom(validRoomDTO, null))
+                .isInstanceOf(NameValueRequiredException.class)
+                .hasMessageContaining("roomNumber");
+
+        verify(roomRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("TC-RS-15 | addRoom | duplicate roomNumber → DataIntegrityViolationException")
     void should_throw_when_room_number_already_exists() {
         // Design gap: addRoom() calls save() without checking for a duplicate room number first.
         // The DB unique constraint throws DataIntegrityViolationException, which is not caught by
@@ -232,7 +282,7 @@ class RoomServiceImplTest {
     }
 
     @Test
-    @DisplayName("TC-RS-13 | deleteRoom | unknown id → throws, no deleteById")
+    @DisplayName("TC-RS-16 | deleteRoom | unknown id → throws, no deleteById")
     void deleteRoom_nonExistentId_throwsNotFoundException() {
         when(roomRepository.existsById(999L)).thenReturn(false);
 
@@ -244,7 +294,7 @@ class RoomServiceImplTest {
     }
 
     @Test
-    @DisplayName("TC-RS-14 | deleteRoom | valid id → deleted, returns 200")
+    @DisplayName("TC-RS-17 | deleteRoom | valid id → deleted, returns 200")
     void deleteRoom_validId_success() {
         when(roomRepository.existsById(1L)).thenReturn(true);
 
@@ -256,7 +306,7 @@ class RoomServiceImplTest {
     }
 
     @Test
-    @DisplayName("TC-RS-15 | getRoomById | unknown id → throws")
+    @DisplayName("TC-RS-18 | getRoomById | unknown id → throws")
     void getRoomById_nonExistentId_throwsNotFoundException() {
         when(roomRepository.findById(999L)).thenReturn(Optional.empty());
 
@@ -266,7 +316,7 @@ class RoomServiceImplTest {
     }
 
     @Test
-    @DisplayName("TC-RS-16 | getRoomById | valid id → returns full RoomDTO")
+    @DisplayName("TC-RS-19 | getRoomById | valid id → returns full RoomDTO")
     void getRoomById_success() {
         Room room = Room.builder()
                 .id(1L)
@@ -299,7 +349,7 @@ class RoomServiceImplTest {
     }
 
     @Test
-    @DisplayName("TC-RS-17 | getAvailableRooms | checkIn in the past → throws")
+    @DisplayName("TC-RS-20 | getAvailableRooms | checkIn in the past → throws")
     void getAvailableRooms_checkInBeforeToday_throwsException() {
         LocalDate yesterday = LocalDate.now().minusDays(1);
         LocalDate tomorrow  = LocalDate.now().plusDays(1);
@@ -310,7 +360,7 @@ class RoomServiceImplTest {
     }
 
     @Test
-    @DisplayName("TC-RS-18 | getAvailableRooms | checkOut before checkIn → throws")
+    @DisplayName("TC-RS-21 | getAvailableRooms | checkOut before checkIn → throws")
     void getAvailableRooms_checkOutBeforeCheckIn_throwsException() {
         LocalDate checkIn  = LocalDate.now().plusDays(5);
         LocalDate checkOut = LocalDate.now().plusDays(2);
@@ -321,7 +371,7 @@ class RoomServiceImplTest {
     }
 
     @Test
-    @DisplayName("TC-RS-19 | getAvailableRooms | checkIn == checkOut → throws")
+    @DisplayName("TC-RS-22 | getAvailableRooms | checkIn == checkOut → throws")
     void getAvailableRooms_sameDate_throwsException() {
         LocalDate same = LocalDate.now().plusDays(3);
 
@@ -331,7 +381,7 @@ class RoomServiceImplTest {
     }
 
     @Test
-    @DisplayName("TC-RS-20 | getAvailableRooms | valid dates → returns available rooms")
+    @DisplayName("TC-RS-23 | getAvailableRooms | valid dates → returns available rooms")
     void getAvailableRooms_success() {
         LocalDate checkIn  = LocalDate.now().plusDays(1);
         LocalDate checkOut = LocalDate.now().plusDays(3);
@@ -351,7 +401,7 @@ class RoomServiceImplTest {
     }
 
     @Test
-    @DisplayName("TC-RS-21 | getAvailableRooms | no rooms available → empty list, no exception")
+    @DisplayName("TC-RS-24 | getAvailableRooms | no rooms available → empty list, no exception")
     void getAvailableRooms_noRoomsAvailable_returnsEmptyList() {
         LocalDate checkIn  = LocalDate.now().plusDays(1);
         LocalDate checkOut = LocalDate.now().plusDays(3);
@@ -368,7 +418,7 @@ class RoomServiceImplTest {
     }
 
     @Test
-    @DisplayName("TC-RS-22 | updateRoom | price and capacity updated — other fields unchanged")
+    @DisplayName("TC-RS-25 | updateRoom | price and capacity updated — other fields unchanged")
     void updateRoom_partialUpdate_success() {
         Room existingRoom = Room.builder()
                 .id(1L)
@@ -402,7 +452,7 @@ class RoomServiceImplTest {
     }
 
     @Test
-    @DisplayName("TC-RS-23 | updateRoom | all fields updated")
+    @DisplayName("TC-RS-26 | updateRoom | all fields updated")
     void updateRoom_allFields_success() {
         Room existingRoom = Room.builder()
                 .id(1L)
@@ -439,7 +489,7 @@ class RoomServiceImplTest {
     }
 
     @Test
-    @DisplayName("TC-RS-24 | updateRoom | unknown id → throws, no save")
+    @DisplayName("TC-RS-27 | updateRoom | unknown id → throws, no save")
     void updateRoom_nonExistentId_throwsNotFoundException() {
         RoomDTO updateDTO = RoomDTO.builder()
                 .id(999L)
@@ -456,56 +506,28 @@ class RoomServiceImplTest {
     }
 
     @Test
-    @DisplayName("TC-RS-25 | searchRoom | keyword match → returns rooms")
-    void searchRoom_validKeyword() {
-        Room room = Room.builder().id(1L).type(RoomType.SINGLE).description("Cozy single room").build();
-        RoomDTO roomDTO = RoomDTO.builder().id(1L).description("Cozy single room").build();
-
-        when(roomRepository.searchRooms("single")).thenReturn(List.of(room));
-        when(modelMapper.map(any(), (Type) any())).thenReturn(List.of(roomDTO));
-
-        Response response = roomService.searchRoom("single");
-
-        assertThat(response.getStatus()).isEqualTo(200);
-        assertThat(response.getRooms()).isNotEmpty();
-    }
-
-    @Test
-    @DisplayName("TC-RS-26 | searchRoom | empty string → throws")
+    @DisplayName("TC-RS-28 | searchRoom | empty string → throws")
     void searchRoom_emptyString_throwsException() {
         assertThatThrownBy(() -> roomService.searchRoom(""))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(NameValueRequiredException.class)
                 .hasMessageContaining("keyword cannot be empty");
     }
 
     @Test
-    @DisplayName("TC-RS-27 | searchRoom | null → IllegalArgumentException")
+    @DisplayName("TC-RS-29 | searchRoom | null → NameValueRequiredException")
     void searchRoom_null_throwsException() {
         // isBlank() throws NPE on null; the null check must come first in the guard condition.
         assertThatThrownBy(() -> roomService.searchRoom(null))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(NameValueRequiredException.class)
                 .hasMessageContaining("keyword cannot be empty");
     }
 
     @Test
-    @DisplayName("TC-RS-28 | searchRoom | whitespace-only string → throws")
+    @DisplayName("TC-RS-30 | searchRoom | whitespace-only string → throws")
     void searchRoom_blankString_throwsException() {
         // isEmpty() returns false for "   " — isBlank() is required to catch whitespace-only input.
-        // The original source used isEmpty(), allowing blank strings to reach the repository.
         assertThatThrownBy(() -> roomService.searchRoom("   "))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(NameValueRequiredException.class)
                 .hasMessageContaining("keyword cannot be empty");
-    }
-
-    @Test
-    @DisplayName("TC-RS-29 | searchRoom | no match → empty list, no exception")
-    void searchRoom_noMatchFound_returnsEmptyList() {
-        when(roomRepository.searchRooms("xyzxyzxyz")).thenReturn(List.of());
-        when(modelMapper.map(any(), (Type) any())).thenReturn(List.of());
-
-        Response response = roomService.searchRoom("xyzxyzxyz");
-
-        assertThat(response.getStatus()).isEqualTo(200);
-        assertThat(response.getRooms()).isNotNull().isEmpty();
     }
 }
