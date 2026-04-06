@@ -5,6 +5,7 @@ import com.example.HotelBooking.dtos.RoomDTO;
 import com.example.HotelBooking.entities.Room;
 import com.example.HotelBooking.enums.RoomType;
 import com.example.HotelBooking.exceptions.InvalidBookingStateAndDateException;
+import com.example.HotelBooking.exceptions.NameValueRequiredException;
 import com.example.HotelBooking.exceptions.NotFoundException;
 import com.example.HotelBooking.repositories.RoomRepository;
 import com.example.HotelBooking.services.RoomService;
@@ -41,6 +42,17 @@ public class RoomServiceImpl implements RoomService {
     @Override
     public Response addRoom(RoomDTO roomDTO, MultipartFile imageFile) {
 
+        if (roomDTO.getRoomNumber() == null) throw new NameValueRequiredException("roomNumber is required");
+        validateRoomNumber(roomDTO.getRoomNumber());
+
+        if (roomDTO.getType() == null) throw new NameValueRequiredException("type is required");
+
+        if (roomDTO.getPricePerNight() == null) throw new NameValueRequiredException("pricePerNight is required");
+        validatePrice(roomDTO.getPricePerNight());
+
+        if (roomDTO.getCapacity() == null) throw new NameValueRequiredException("capacity is required");
+        validateCapacity(roomDTO.getCapacity());
+
         Room roomToSave = modelMapper.map(roomDTO, Room.class);
 
         if (imageFile != null){
@@ -68,15 +80,18 @@ public class RoomServiceImpl implements RoomService {
             existingRoom.setImageUrl(imagePath);
         }
 
-        if (roomDTO.getRoomNumber() != null && roomDTO.getRoomNumber() > 0){
+        if (roomDTO.getRoomNumber() != null) {
+            validateRoomNumber(roomDTO.getRoomNumber());
             existingRoom.setRoomNumber(roomDTO.getRoomNumber());
         }
 
-        if (roomDTO.getPricePerNight() != null && roomDTO.getPricePerNight().compareTo(BigDecimal.ZERO) > 0){
+        if (roomDTO.getPricePerNight() != null) {
+            validatePrice(roomDTO.getPricePerNight());
             existingRoom.setPricePerNight(roomDTO.getPricePerNight());
         }
 
-        if (roomDTO.getCapacity() != null && roomDTO.getCapacity() > 0){
+        if (roomDTO.getCapacity() != null) {
+            validateCapacity(roomDTO.getCapacity());
             existingRoom.setCapacity(roomDTO.getCapacity());
         }
         if (roomDTO.getType() != null) existingRoom.setType(roomDTO.getType());
@@ -193,6 +208,21 @@ public class RoomServiceImpl implements RoomService {
 
 
 
+
+    private void validateRoomNumber(Integer roomNumber) {
+        if (roomNumber <= 0)
+            throw new NameValueRequiredException("roomNumber must be greater than 0");
+    }
+
+    private void validatePrice(BigDecimal price) {
+        if (price.compareTo(BigDecimal.ZERO) <= 0)
+            throw new NameValueRequiredException("pricePerNight must be greater than 0");
+    }
+
+    private void validateCapacity(Integer capacity) {
+        if (capacity <= 0)
+            throw new NameValueRequiredException("capacity must be at least 1");
+    }
 
     //save image to backend folder
 
