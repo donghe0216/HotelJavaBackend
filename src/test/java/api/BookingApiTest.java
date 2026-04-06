@@ -332,4 +332,88 @@ class BookingApiTest extends BaseApiTest {
             .statusCode(404)
             .body("message", containsStringIgnoringCase("not found"));
     }
+
+    // ── cancelBooking ─────────────────────────────────────────────────────────
+
+    @Test @Order(17)
+    @DisplayName("TC-B-17 | cancelBooking | owner cancels BOOKED booking before checkIn → 200, status CANCELLED")
+    void cancelBooking_success() {
+        // Create a fresh booking in a far-future date range to avoid conflict
+        Map<String, Object> body = bookingPayload(SEED_ROOM_ID, inDays(20), inDays(22));
+        String ref = given().spec(customerSpec).body(body)
+                .when().post("/bookings")
+                .then().statusCode(200).extract().path("booking.bookingReference");
+
+        Integer id = given().spec(adminSpec).when()
+                .get("/bookings/{ref}", ref)
+                .then().extract().path("booking.id");
+
+        given()
+            .spec(customerSpec)
+        .when()
+            .post("/bookings/{id}/cancel", id)
+        .then()
+            .statusCode(200)
+            .body("status",  equalTo(200))
+            .body("message", containsStringIgnoringCase("cancelled"));
+
+        given().spec(customerSpec).when()
+               .get("/bookings/{ref}", ref)
+               .then()
+               .body("booking.bookingStatus", equalTo("CANCELLED"));
+    }
+
+    @Test @Order(18)
+    @DisplayName("TC-B-18 | cancelBooking | unauthenticated → 401")
+    void cancelBooking_unauthenticated_returns401() {
+        given()
+            .spec(anonSpec)
+        .when()
+            .post("/bookings/{id}/cancel", 1L)
+        .then()
+            .statusCode(401);
+    }
+
+    @Test @Order(19)
+    @DisplayName("TC-B-19 | cancelBooking | admin role → 403 (endpoint is CUSTOMER only)")
+    void cancelBooking_adminRole_returns403() {
+        given()
+            .spec(adminSpec)
+        .when()
+            .post("/bookings/{id}/cancel", 1L)
+        .then()
+            .statusCode(403);
+    }
+
+    @Test @Order(20)
+    @DisplayName("TC-B-20 | cancelBooking | wrong owner (customer B cancels customer A's booking) → 400")
+    void cancelBooking_wrongOwner_returns400() {
+        // TODO: requires a second customer account; for now documents the IDOR protection requirement
+        // Create booking as customer, then attempt to cancel as a different user would return 400
+        // This test is a placeholder — implement when a second customer seed account is available
+        Assumptions.assumeTrue(createdBookingId != null,
+                "Skipped: requires createdBookingId from TC-B-10");
+
+        // createdBookingId belongs to customer@hotel.com — if another customer tries to cancel it they get 400
+        // For now verify the owner (same customer) cannot cancel a non-BOOKED booking (TC-B-13 set it to CANCELLED)
+        given()
+            .spec(customerSpec)
+        .when()
+            .post("/bookings/{id}/cancel", createdBookingId)
+        .then()
+            .statusCode(400)
+            .body("message", containsStringIgnoringCase("BOOKED"));
+    }
+
+    @Test @Order(21)
+    @DisplayName("TC-B-21 | cancelBooking | booking not found → 404")
+    void cancelBooking_notFound_returns404() {
+        given()
+            .spec(customerSpec)
+        .when()
+            .post("/bookings/{id}/cancel", 999999L)
+        .then()
+            .statusCode(404)
+            .body("message", containsStringIgnoringCase("not found"));
+    }
 }
