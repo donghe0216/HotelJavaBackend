@@ -569,6 +569,14 @@ class RoomApiTest extends BaseApiTest {
             .statusCode(200)
             .body("status",  equalTo(200))
             .body("message", containsStringIgnoringCase("deleted"));
+
+        // Verify deletion persisted — room must no longer be retrievable
+        given()
+            .spec(anonSpec)
+        .when()
+            .get("/rooms/{id}", createdRoomId)
+        .then()
+            .statusCode(404);
     }
 
     @Test @Order(29)
