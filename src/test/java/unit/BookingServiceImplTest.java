@@ -380,4 +380,88 @@ class BookingServiceImplTest {
         verify(bookingRepository, never()).save(any());
     }
 
+    // ── cancelBooking ─────────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("TC-BS-17 | cancelBooking | BOOKED + checkIn tomorrow → cancelled, saved")
+    void should_cancel_when_booked_and_checkIn_is_tomorrow() {
+        Booking booking = buildBooking(1L, testUser, BookingStatus.BOOKED, LocalDate.now().plusDays(1));
+        when(userService.getCurrentLoggedInUser()).thenReturn(testUser);
+        when(bookingRepository.findById(1L)).thenReturn(Optional.of(booking));
+
+        bookingService.cancelBooking(1L);
+
+        ArgumentCaptor<Booking> captor = ArgumentCaptor.forClass(Booking.class);
+        verify(bookingRepository).save(captor.capture());
+        assertThat(captor.getValue().getBookingStatus()).isEqualTo(BookingStatus.CANCELLED);
+    }
+
+    @Test
+    @DisplayName("TC-BS-18 | cancelBooking | booking not found → throws NotFoundException")
+    void should_throw_when_booking_not_found() {
+        when(userService.getCurrentLoggedInUser()).thenReturn(testUser);
+        when(bookingRepository.findById(999L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> bookingService.cancelBooking(999L))
+                .isInstanceOf(NotFoundException.class)
+                .hasMessageContaining("not found");
+
+        verify(bookingRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("TC-BS-19 | cancelBooking | wrong owner → throws")
+    void should_throw_when_caller_is_not_owner() {
+        User otherUser = new User();
+        otherUser.setId(2L);
+        Booking booking = buildBooking(1L, otherUser, BookingStatus.BOOKED, LocalDate.now().plusDays(1));
+
+        when(userService.getCurrentLoggedInUser()).thenReturn(testUser);
+        when(bookingRepository.findById(1L)).thenReturn(Optional.of(booking));
+
+        assertThatThrownBy(() -> bookingService.cancelBooking(1L))
+                .isInstanceOf(InvalidBookingStateAndDateException.class)
+                .hasMessageContaining("not authorized");
+
+        verify(bookingRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("TC-BS-20 | cancelBooking | status = CHECKED_IN → throws")
+    void should_throw_when_status_is_not_booked() {
+        Booking booking = buildBooking(1L, testUser, BookingStatus.CHECKED_IN, LocalDate.now().plusDays(1));
+        when(userService.getCurrentLoggedInUser()).thenReturn(testUser);
+        when(bookingRepository.findById(1L)).thenReturn(Optional.of(booking));
+
+        assertThatThrownBy(() -> bookingService.cancelBooking(1L))
+                .isInstanceOf(InvalidBookingStateAndDateException.class)
+                .hasMessageContaining("BOOKED");
+
+        verify(bookingRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("TC-BS-21 | cancelBooking | checkIn = today → throws")
+    void should_throw_when_checkIn_is_today() {
+        Booking booking = buildBooking(1L, testUser, BookingStatus.BOOKED, LocalDate.now());
+        when(userService.getCurrentLoggedInUser()).thenReturn(testUser);
+        when(bookingRepository.findById(1L)).thenReturn(Optional.of(booking));
+
+        assertThatThrownBy(() -> bookingService.cancelBooking(1L))
+                .isInstanceOf(InvalidBookingStateAndDateException.class)
+                .hasMessageContaining("before the check-in date");
+
+        verify(bookingRepository, never()).save(any());
+    }
+
+    private Booking buildBooking(Long id, User owner, BookingStatus status, LocalDate checkInDate) {
+        Booking b = new Booking();
+        b.setId(id);
+        b.setUser(owner);
+        b.setBookingStatus(status);
+        b.setCheckInDate(checkInDate);
+        b.setCheckOutDate(checkInDate.plusDays(2));
+        return b;
+    }
+
 }
