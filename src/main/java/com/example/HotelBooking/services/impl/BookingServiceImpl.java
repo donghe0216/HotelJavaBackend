@@ -175,6 +175,37 @@ public class BookingServiceImpl implements BookingService {
     }
 
 
+    @Override
+    public Response cancelBooking(Long bookingId) {
+        User currentUser = userService.getCurrentLoggedInUser();
+
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new NotFoundException("Booking not found"));
+
+        // Ownership check: only the booking owner can cancel
+        if (!booking.getUser().getId().equals(currentUser.getId())) {
+            throw new InvalidBookingStateAndDateException("You are not authorized to cancel this booking");
+        }
+
+        // Only BOOKED status can be cancelled by the customer
+        if (booking.getBookingStatus() != BookingStatus.BOOKED) {
+            throw new InvalidBookingStateAndDateException("Only bookings with status BOOKED can be cancelled");
+        }
+
+        // Cannot cancel on or after check-in day
+        if (!LocalDate.now().isBefore(booking.getCheckInDate())) {
+            throw new InvalidBookingStateAndDateException("Booking can only be cancelled before the check-in date");
+        }
+
+        booking.setBookingStatus(BookingStatus.CANCELLED);
+        bookingRepository.save(booking);
+
+        return Response.builder()
+                .status(200)
+                .message("Booking cancelled successfully")
+                .build();
+    }
+
     private BigDecimal calculateTotalPrice(Room room, BookingDTO bookingDTO){
         BigDecimal pricePerNight = room.getPricePerNight();
         if (pricePerNight == null) {
