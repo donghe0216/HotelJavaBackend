@@ -53,6 +53,14 @@ public class RoomServiceImpl implements RoomService {
         if (roomDTO.getCapacity() == null) throw new NameValueRequiredException("capacity is required");
         validateCapacity(roomDTO.getCapacity());
 
+        // [Bug] No service-layer duplicate check for roomNumber.
+        // Duplicate detection relies solely on the DB unique constraint, which throws
+        // DataIntegrityViolationException → GlobalExceptionHandler maps it to 409.
+        // Downside: the 409 message is generic ("A record with the same unique value already exists.")
+        // and there is a race condition — two concurrent requests can both pass this point
+        // and both attempt the insert.
+        // Fix: add roomRepository.existsByRoomNumber(roomDTO.getRoomNumber()) before save,
+        // and keep the DB constraint as a safety net.
         Room roomToSave = modelMapper.map(roomDTO, Room.class);
 
         if (imageFile != null){
@@ -256,8 +264,11 @@ public class RoomServiceImpl implements RoomService {
 
     //save image to frontend folder
     private String saveImageToFrontend(MultipartFile imageFile){
+        // [Bug fixed] Originally threw IllegalArgumentException → fell to catch-all handler → 500.
+        // Found via TC-R-03: non-image file upload returned 500 instead of 400.
+        // Fixed by throwing NameValueRequiredException → GlobalExceptionHandler maps to 400.
         if (!imageFile.getContentType().startsWith("image/")){
-            throw new IllegalArgumentException("Only Image files are allowed");
+            throw new NameValueRequiredException("Only image files are allowed");
         }
 
         //Create directory to store image if it doesn exist
