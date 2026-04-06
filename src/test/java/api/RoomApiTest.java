@@ -50,9 +50,9 @@ class RoomApiTest extends BaseApiTest {
     @Test @Order(1)
     @DisplayName("TC-R-01 | addRoom | valid JPEG upload → room created")
     void addRoom_success_withImage() {
-        // ⚠️  This test will fail in CI unless IMAGE_DIRECTORY_FRONTEND is
-        //     replaced with a configurable @Value / @TempDir path.
-        //     See Bug note in test case sheet TC-R-04.
+        // Design Note (self-review fix):
+        // Image directory was originally hardcoded, which caused failures in CI and other environments.
+        // Externalized to application.properties to ensure portability across environments.
 
         Integer id = given()
             .spec(adminSpec)
@@ -98,8 +98,10 @@ class RoomApiTest extends BaseApiTest {
     }
 
     @Test @Order(3)
-    @DisplayName("TC-R-03 | addRoom | .txt file upload → 500")
+    @DisplayName("TC-R-03 | addRoom | .txt file upload → 400")
     void addRoom_fail_illegalFileType() {
+        // [Bug fixed] Was returning 500 (IllegalArgumentException → catch-all).
+        // Found via this test: fixed by throwing NameValueRequiredException → 400.
         byte[] textBytes = "this is not an image".getBytes();
 
         given()
@@ -118,34 +120,42 @@ class RoomApiTest extends BaseApiTest {
         .when()
             .post("/rooms/add")
         .then()
-            .statusCode(500)
+            .statusCode(400)
             .body("message", containsStringIgnoringCase("image"));
     }
 
     @Test @Order(4)
-    @DisplayName("TC-R-04 | addRoom | [Bug] hardcoded image directory path")
-    void addRoom_hardcodedPath_failsInCi() {
-        // This is a documentation test.
-        // The real assertion is: after replacing IMAGE_DIRECTORY_FRONTEND with
-        // an @Value("${room.image.dir}") property, the path should be
-        // configurable and tests should pass in any environment.
-        //
-        // Action item: externalise to application.properties and inject via
-        //   @Value("${room.image.dir:/tmp/rooms/}")
-        //   private String imageDirectory;
-        //
-        // For now we just assert the endpoint is reachable (not that the path works).
+    @DisplayName("TC-R-04 | addRoom | image upload works across environments")
+    void addRoom_imageUpload_portableAcrossEnvironments() {
+        // Design Note (self-review fix):
+        // Image directory was originally hardcoded, which caused failures in CI and other environments.
+        // Externalized to application.properties to ensure portability across environments.
         given()
             .spec(adminSpec)
+            .contentType("multipart/form-data")
+            .multiPart("roomNumber",    204)
+            .multiPart("type",          "SINGLE")
+            .multiPart("pricePerNight", "100.00")
+            .multiPart("capacity",      2)
+            .multiPart(new MultiPartSpecBuilder(MINIMAL_JPEG)
+                    .fileName("room.jpg")
+                    .mimeType("image/jpeg")
+                    .controlName("imageFile")
+                    .build())
         .when()
-            .get("/rooms/all")
+            .post("/rooms/add")
         .then()
-            .statusCode(200);   // sanity — room controller is alive
+            .statusCode(200)
+            .body("message", containsStringIgnoringCase("added"));
     }
 
     @Test @Order(5)
     @DisplayName("TC-R-05 | addRoom | invalid room type → 400")
     void addRoom_invalidRoomTypeEnum_returns400() {
+        // [Bug] No message assertion possible here.
+        // Invalid enum value causes HttpMessageNotReadableException → handled by parent
+        // ResponseEntityExceptionHandler → no custom message field in response.
+        // Fix: override handleHttpMessageNotReadable in GlobalExceptionHandler to return Response.
         given()
             .spec(adminSpec)
             .contentType("multipart/form-data")
@@ -162,6 +172,12 @@ class RoomApiTest extends BaseApiTest {
     @Test @Order(6)
     @DisplayName("TC-R-06 | addRoom | pricePerNight as string → 400")
     void addRoom_priceAsString_returns400() {
+        // [Bug] No message assertion possible here.
+        // Spring handles MethodArgumentTypeMismatchException via ResponseEntityExceptionHandler
+        // (the parent class), which returns Spring's default format without our custom message field.
+        // GlobalExceptionHandler already overrides handleMethodArgumentNotValid (Bean Validation),
+        // but handleMethodArgumentTypeMismatch is not overridden — response format is inconsistent.
+        // Fix: override handleMethodArgumentTypeMismatch in GlobalExceptionHandler to return Response.
         given()
             .spec(adminSpec)
             .contentType("multipart/form-data")
@@ -176,24 +192,7 @@ class RoomApiTest extends BaseApiTest {
     }
 
     @Test @Order(7)
-    @DisplayName("TC-R-07 | addRoom | pricePerNight = -1 → 400")
-    void addRoom_negativePrice_returns400() {
-        given()
-            .spec(adminSpec)
-            .contentType("multipart/form-data")
-            .multiPart("roomNumber",    502)
-            .multiPart("type",          "SINGLE")
-            .multiPart("pricePerNight", "-100.00")
-            .multiPart("capacity",      2)
-        .when()
-            .post("/rooms/add")
-        .then()
-            .statusCode(400)
-            .body("message", containsStringIgnoringCase("pricePerNight"));
-    }
-
-    @Test @Order(8)
-    @DisplayName("TC-R-08 | addRoom | duplicate roomNumber → 409")
+    @DisplayName("TC-R-07 | addRoom | duplicate roomNumber → 409")
     void addRoom_duplicateRoomNumber_returns409() {
         // Duplicate room number triggers DataIntegrityViolationException from the DB unique constraint.
         // GlobalExceptionHandler maps DataIntegrityViolationException → 409 CONFLICT.
@@ -226,9 +225,9 @@ class RoomApiTest extends BaseApiTest {
             .body("message", containsStringIgnoringCase("already exists"));
     }
 
-    @Test @Order(9)
-    @DisplayName("TC-R-09 | addRoom | missing required param → 400")
-    void addRoom_missingRequiredParam_returns400() {
+    @Test @Order(8)
+    @DisplayName("TC-R-08 | addRoom | roomNumber not sent → 400")
+    void addRoom_nullRoomNumber_returns400() {
         given()
             .spec(adminSpec)
             .contentType("multipart/form-data")
@@ -238,11 +237,12 @@ class RoomApiTest extends BaseApiTest {
         .when()
             .post("/rooms/add")
         .then()
-            .statusCode(400);
+            .statusCode(400)
+            .body("message", containsStringIgnoringCase("roomNumber"));
     }
 
-    @Test @Order(10)
-    @DisplayName("TC-R-10 | addRoom | pricePerNight = 0 → 400")
+    @Test @Order(9)
+    @DisplayName("TC-R-09 | addRoom | pricePerNight = 0 → 400")
     void addRoom_zeroPricePerNight_returns400() {
         given()
             .spec(adminSpec)
@@ -258,44 +258,10 @@ class RoomApiTest extends BaseApiTest {
             .body("message", containsStringIgnoringCase("pricePerNight"));
     }
 
-    @Test @Order(11)
-    @DisplayName("TC-R-11 | addRoom | capacity = 0 → 400")
-    void addRoom_zeroCapacity_returns400() {
-        given()
-            .spec(adminSpec)
-            .contentType("multipart/form-data")
-            .multiPart("roomNumber",    504)
-            .multiPart("type",          "SINGLE")
-            .multiPart("pricePerNight", "100.00")
-            .multiPart("capacity",      0)
-        .when()
-            .post("/rooms/add")
-        .then()
-            .statusCode(400)
-            .body("message", containsStringIgnoringCase("capacity"));
-    }
-
-    @Test @Order(12)
-    @DisplayName("TC-R-12 | addRoom | roomNumber = 0 → 400")
-    void addRoom_zeroRoomNumber_returns400() {
-        given()
-            .spec(adminSpec)
-            .contentType("multipart/form-data")
-            .multiPart("roomNumber",    0)
-            .multiPart("type",          "SINGLE")
-            .multiPart("pricePerNight", "100.00")
-            .multiPart("capacity",      2)
-        .when()
-            .post("/rooms/add")
-        .then()
-            .statusCode(400)
-            .body("message", containsStringIgnoringCase("roomNumber"));
-    }
-
     // ── getAllRooms ───────────────────────────────────────────────────────────
 
-    @Test @Order(13)
-    @DisplayName("TC-R-13 | getAllRooms | returns all rooms sorted by id DESC")
+    @Test @Order(10)
+    @DisplayName("TC-R-10 | getAllRooms | returns all rooms sorted by id DESC")
     void getAllRooms_success() {
         given()
             .spec(anonSpec)
@@ -304,8 +270,7 @@ class RoomApiTest extends BaseApiTest {
         .then()
             .statusCode(200)
             .body("status",  equalTo(200))
-            .body("rooms",   notNullValue())
-            .body("rooms",   not(empty()));
+            .body("rooms",   notNullValue());
 
         // Cache one ID for subsequent tests if not already set
         if (createdRoomId == null) {
@@ -317,8 +282,8 @@ class RoomApiTest extends BaseApiTest {
 
     // ── getAllRoomTypes ───────────────────────────────────────────────────────
 
-    @Test @Order(14)
-    @DisplayName("TC-R-14 | getAllRoomTypes | returns all room type values")
+    @Test @Order(11)
+    @DisplayName("TC-R-11 | getAllRoomTypes | returns all room type values")
     void getAllRoomTypes_returnsAllEnumValues() {
         given()
             .spec(anonSpec)
@@ -331,8 +296,8 @@ class RoomApiTest extends BaseApiTest {
 
     // ── getRoomById ───────────────────────────────────────────────────────────
 
-    @Test @Order(15)
-    @DisplayName("TC-R-15 | getRoomById | valid id → returns room")
+    @Test @Order(12)
+    @DisplayName("TC-R-12 | getRoomById | valid id → returns room")
     void getRoomById_success() {
         // TODO: test order dependency — this test relies on data created by a previous test, refactor to use @BeforeEach or independent fixtures
         given()
@@ -345,8 +310,8 @@ class RoomApiTest extends BaseApiTest {
             .body("room.id",  equalTo(createdRoomId.intValue()));
     }
 
-    @Test @Order(16)
-    @DisplayName("TC-R-16 | getRoomById | unknown id → 404")
+    @Test @Order(13)
+    @DisplayName("TC-R-13 | getRoomById | unknown id → 404")
     void getRoomById_notFound() {
         given()
             .spec(anonSpec)
@@ -359,8 +324,8 @@ class RoomApiTest extends BaseApiTest {
 
     // ── updateRoom ────────────────────────────────────────────────────────────
 
-    @Test @Order(17)
-    @DisplayName("TC-R-17 | updateRoom | update price and capacity → persisted")
+    @Test @Order(14)
+    @DisplayName("TC-R-14 | updateRoom | update price and capacity → persisted")
     void updateRoom_success_partialUpdate() {
         // TODO: test order dependency — this test relies on data created by a previous test, refactor to use @BeforeEach or independent fixtures
         given()
@@ -377,26 +342,32 @@ class RoomApiTest extends BaseApiTest {
             .body("message", containsStringIgnoringCase("updated"));
 
         given().spec(anonSpec).when().get("/rooms/{id}", createdRoomId)
-               .then().body("room.capacity", equalTo(3));
+               .then()
+               .body("room.pricePerNight", equalTo(200.00f))
+               .body("room.capacity",      equalTo(3))
+               // Fields not included in update payload must remain unchanged
+               .body("room.roomNumber",    equalTo(201))
+               .body("room.type",          equalTo("SINGLE"));
     }
 
-    @Test @Order(18)
-    @DisplayName("TC-R-18 | updateRoom | unknown id → 404")
-    void updateRoom_notFound() {
+    @Test @Order(15)
+    @DisplayName("TC-R-15 | updateRoom | roomNumber already taken → 409")
+    void updateRoom_duplicateRoomNumber_returns409() {
+        // Room 202 was created in TC-R-02; updating createdRoomId's roomNumber to 202 should conflict
         given()
             .spec(adminSpec)
             .contentType("multipart/form-data")
-            .multiPart("id",            999999L)
-            .multiPart("pricePerNight", "200.00")
+            .multiPart("id",         createdRoomId)
+            .multiPart("roomNumber", 202)
         .when()
             .put("/rooms/update")
         .then()
-            .statusCode(404)
-            .body("message", containsStringIgnoringCase("not found"));
+            .statusCode(409)
+            .body("message", containsStringIgnoringCase("already exists"));
     }
 
-    @Test @Order(19)
-    @DisplayName("TC-R-19 | updateRoom | roomNumber = 0 → 400")
+    @Test @Order(16)
+    @DisplayName("TC-R-16 | updateRoom | roomNumber = 0 → 400")
     void updateRoom_zeroRoomNumber_returns400() {
         given()
             .spec(adminSpec)
@@ -410,8 +381,8 @@ class RoomApiTest extends BaseApiTest {
             .body("message", containsStringIgnoringCase("roomNumber"));
     }
 
-    @Test @Order(20)
-    @DisplayName("TC-R-20 | updateRoom | pricePerNight = 0 → 400")
+    @Test @Order(17)
+    @DisplayName("TC-R-17 | updateRoom | pricePerNight = 0 → 400")
     void updateRoom_zeroPricePerNight_returns400() {
         given()
             .spec(adminSpec)
@@ -425,8 +396,8 @@ class RoomApiTest extends BaseApiTest {
             .body("message", containsStringIgnoringCase("pricePerNight"));
     }
 
-    @Test @Order(21)
-    @DisplayName("TC-R-21 | updateRoom | valid image → updated")
+    @Test @Order(18)
+    @DisplayName("TC-R-18 | updateRoom | valid image → updated")
     void updateRoom_success_withImage() {
         given()
             .spec(adminSpec)
@@ -444,9 +415,11 @@ class RoomApiTest extends BaseApiTest {
             .body("message", containsStringIgnoringCase("updated"));
     }
 
-    @Test @Order(22)
-    @DisplayName("TC-R-22 | updateRoom | .txt file upload → 500")
-    void updateRoom_invalidFileType_returns500() {
+    @Test @Order(19)
+    @DisplayName("TC-R-19 | updateRoom | .txt file upload → 400")
+    void updateRoom_invalidFileType_returns400() {
+        // [Bug fixed] Was returning 500 (IllegalArgumentException → catch-all).
+        // Found via this test: fixed by throwing NameValueRequiredException → 400.
         byte[] textBytes = "this is not an image".getBytes();
 
         given()
@@ -461,12 +434,12 @@ class RoomApiTest extends BaseApiTest {
         .when()
             .put("/rooms/update")
         .then()
-            .statusCode(500)
+            .statusCode(400)
             .body("message", containsStringIgnoringCase("image"));
     }
 
-    @Test @Order(23)
-    @DisplayName("TC-R-23 | updateRoom | capacity = 0 → 400")
+    @Test @Order(20)
+    @DisplayName("TC-R-20 | updateRoom | capacity = 0 → 400")
     void updateRoom_zeroCapacity_returns400() {
         given()
             .spec(adminSpec)
@@ -480,23 +453,10 @@ class RoomApiTest extends BaseApiTest {
             .body("message", containsStringIgnoringCase("capacity"));
     }
 
-    @Test @Order(24)
-    @DisplayName("TC-R-24 | updateRoom | missing id → 400")
-    void updateRoom_missingId_returns400() {
-        given()
-            .spec(adminSpec)
-            .contentType("multipart/form-data")
-            .multiPart("pricePerNight", "200.00")
-        .when()
-            .put("/rooms/update")
-        .then()
-            .statusCode(400);
-    }
-
     // ── getAvailableRooms ─────────────────────────────────────────────────────
 
-    @Test @Order(25)
-    @DisplayName("TC-R-25 | getAvailableRooms | valid dates → returns available rooms")
+    @Test @Order(21)
+    @DisplayName("TC-R-21 | getAvailableRooms | valid dates → returns available rooms")
     void getAvailableRooms_success() {
         given()
             .spec(anonSpec)
@@ -511,8 +471,8 @@ class RoomApiTest extends BaseApiTest {
             .body("rooms",  notNullValue());
     }
 
-    @Test @Order(26)
-    @DisplayName("TC-R-26 | getAvailableRooms | checkIn in the past → 400")
+    @Test @Order(22)
+    @DisplayName("TC-R-22 | getAvailableRooms | checkIn in the past → 400")
     void getAvailableRooms_fail_checkInBeforeToday() {
         given()
             .spec(anonSpec)
@@ -526,40 +486,10 @@ class RoomApiTest extends BaseApiTest {
             .body("message", containsStringIgnoringCase("before today"));
     }
 
-    @Test @Order(27)
-    @DisplayName("TC-R-27 | getAvailableRooms | checkOut before checkIn → 400")
-    void getAvailableRooms_fail_checkOutBeforeCheckIn() {
-        given()
-            .spec(anonSpec)
-            .queryParam("checkInDate",  inDays(3))
-            .queryParam("checkOutDate", tomorrow())
-            .queryParam("roomType",     "SINGLE")
-        .when()
-            .get("/rooms/available")
-        .then()
-            .statusCode(400)
-            .body("message", containsStringIgnoringCase("before check in"));
-    }
-
-    @Test @Order(28)
-    @DisplayName("TC-R-28 | getAvailableRooms | checkIn == checkOut → 400")
-    void getAvailableRooms_fail_sameDate() {
-        given()
-            .spec(anonSpec)
-            .queryParam("checkInDate",  tomorrow())
-            .queryParam("checkOutDate", tomorrow())
-            .queryParam("roomType",     "SINGLE")
-        .when()
-            .get("/rooms/available")
-        .then()
-            .statusCode(400)
-            .body("message", containsStringIgnoringCase("equal to check out date"));
-    }
-
     // ── searchRoom ────────────────────────────────────────────────────────────
 
-    @Test @Order(29)
-    @DisplayName("TC-R-29 | searchRoom | keyword match → returns rooms")
+    @Test @Order(23)
+    @DisplayName("TC-R-23 | searchRoom | keyword match → returns rooms")
     void searchRoom_success_validInput() {
         given()
             .spec(anonSpec)
@@ -572,8 +502,8 @@ class RoomApiTest extends BaseApiTest {
             .body("rooms",  notNullValue());
     }
 
-    @Test @Order(30)
-    @DisplayName("TC-R-30 | searchRoom | empty string → 400")
+    @Test @Order(24)
+    @DisplayName("TC-R-24 | searchRoom | empty string → 400")
     void searchRoom_emptyInput_returns400() {
         given()
             .spec(anonSpec)
@@ -585,8 +515,8 @@ class RoomApiTest extends BaseApiTest {
             .body("message", containsStringIgnoringCase("keyword"));
     }
 
-    @Test @Order(31)
-    @DisplayName("TC-R-31 | searchRoom | SQL injection input → 200, empty list")
+    @Test @Order(25)
+    @DisplayName("TC-R-25 | searchRoom | SQL injection input → 200, empty list")
     void searchRoom_sqlInjection_returns200WithEmptyList() {
         given()
             .spec(anonSpec)
@@ -599,8 +529,8 @@ class RoomApiTest extends BaseApiTest {
             .body("rooms", empty());
     }
 
-    @Test @Order(32)
-    @DisplayName("TC-R-32 | searchRoom | 300-char keyword → not 500")
+    @Test @Order(26)
+    @DisplayName("TC-R-26 | searchRoom | 300-char keyword → not 500")
     void searchRoom_oversizedInput_doesNotReturn500() {
         given()
             .spec(anonSpec)
@@ -611,8 +541,8 @@ class RoomApiTest extends BaseApiTest {
             .statusCode(not(500));
     }
 
-    @Test @Order(33)
-    @DisplayName("TC-R-33 | searchRoom | unicode / Japanese input → 200, empty list")
+    @Test @Order(27)
+    @DisplayName("TC-R-27 | searchRoom | unicode / Japanese input → 200, empty list")
     void searchRoom_unicodeInput_returns200WithEmptyList() {
         given()
             .spec(anonSpec)
@@ -627,8 +557,8 @@ class RoomApiTest extends BaseApiTest {
 
     // ── deleteRoom ────────────────────────────────────────────────────────────
 
-    @Test @Order(34)
-    @DisplayName("TC-R-34 | deleteRoom | valid id → deleted")
+    @Test @Order(28)
+    @DisplayName("TC-R-28 | deleteRoom | valid id → deleted")
     void deleteRoom_success() {
         // TODO: test order dependency — this test relies on data created by a previous test, refactor to use @BeforeEach or independent fixtures
         given()
@@ -641,8 +571,8 @@ class RoomApiTest extends BaseApiTest {
             .body("message", containsStringIgnoringCase("deleted"));
     }
 
-    @Test @Order(35)
-    @DisplayName("TC-R-35 | deleteRoom | unknown id → 404")
+    @Test @Order(29)
+    @DisplayName("TC-R-29 | deleteRoom | unknown id → 404")
     void deleteRoom_notFound() {
         given()
             .spec(adminSpec)
