@@ -23,11 +23,13 @@ public class UserController {
     }
 
 
+    // No @PreAuthorize needed: JWT filter ensures authentication; service resolves identity from SecurityContext
     @PutMapping("/update")
     public ResponseEntity<Response> updateOwnAccount(@RequestBody @Valid UserUpdateRequest request){
         return ResponseEntity.ok(userService.updateOwnAccount(request));
     }
 
+    // No @PreAuthorize needed: JWT filter ensures authentication; service resolves identity from SecurityContext
     @DeleteMapping("/delete")
     public ResponseEntity<Response> deleteOwnAccount(){
         return ResponseEntity.ok(userService.deleteOwnAccount());

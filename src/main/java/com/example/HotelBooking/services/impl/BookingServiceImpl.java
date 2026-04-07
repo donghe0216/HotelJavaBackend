@@ -51,6 +51,8 @@ public class BookingServiceImpl implements BookingService {
         List<BookingDTO> bookingDTOList = modelMapper.map(bookingList, new TypeToken<List<BookingDTO>>() {}.getType());
 
         for(BookingDTO bookingDTO: bookingDTOList){
+            // Prevent circular serialization: Booking → User → Bookings → Booking...
+            // Room details are not needed in the admin list view
             bookingDTO.setUser(null);
             bookingDTO.setRoom(null);
         }
@@ -63,6 +65,9 @@ public class BookingServiceImpl implements BookingService {
     }
 
     @Override
+    // READ_COMMITTED prevents dirty reads from concurrent transactions.
+    // Combined with the pessimistic lock below, ensures availability check
+    // and insert are atomic for the same room.
     @Transactional(isolation = Isolation.READ_COMMITTED)
     public Response createBooking(BookingDTO bookingDTO) {
 
@@ -79,32 +84,26 @@ public class BookingServiceImpl implements BookingService {
             throw new InvalidBookingStateAndDateException("checkInDate and checkOutDate are required");
         }
 
-        //validation: Ensure the check-in date is not before today
         if (bookingDTO.getCheckInDate().isBefore(LocalDate.now())){
             throw new InvalidBookingStateAndDateException("check in date cannot be before today ");
         }
 
-        //validation: Ensure the check-out date is not before check in date
         if (bookingDTO.getCheckOutDate().isBefore(bookingDTO.getCheckInDate())){
             throw new InvalidBookingStateAndDateException("check out date cannot be before check in date ");
         }
 
-        //validation: Ensure the check-in date is not same as check out date
         if (bookingDTO.getCheckInDate().isEqual(bookingDTO.getCheckOutDate())){
             throw new InvalidBookingStateAndDateException("check in date cannot be equal to check out date ");
         }
 
-        //validate room availability
        boolean isAvailable = bookingRepository.isRoomAvailable(room.getId(), bookingDTO.getCheckInDate(), bookingDTO.getCheckOutDate());
         if (!isAvailable) {
             throw new InvalidBookingStateAndDateException("Room is not available for the selected date ranges");
         }
 
-        //calculate the total price needed to pay for the stay
         BigDecimal totalPrice = calculateTotalPrice(room, bookingDTO);
         String bookingReference = bookingCodeGenerator.generateBookingReference();
 
-        //create and save the booking
         Booking booking = new Booking();
         booking.setUser(currentUser);
         booking.setRoom(room);
@@ -112,13 +111,14 @@ public class BookingServiceImpl implements BookingService {
         booking.setCheckOutDate(bookingDTO.getCheckOutDate());
         booking.setTotalPrice(totalPrice);
         booking.setBookingReference(bookingReference);
+        // BOOKED is the initial confirmed state; payment is collected on arrival, not upfront
         booking.setBookingStatus(BookingStatus.BOOKED);
         booking.setPaymentStatus(PaymentStatus.PENDING);
         booking.setCreatedAt(LocalDateTime.now());
 
-        bookingRepository.save(booking); //save to database
+        bookingRepository.save(booking);
 
-        //send notification via email (async — failure does not affect response)
+        // send notification via email (async — failure does not affect response)
         NotificationDTO notificationDTO = NotificationDTO.builder()
                 .recipient(currentUser.getEmail())
                 .subject("Booking Confirmation")
@@ -127,7 +127,6 @@ public class BookingServiceImpl implements BookingService {
                 .build();
         notificationService.sendEmail(notificationDTO);
 
-        // return the saved booking data (including reference and total price)
         BookingDTO savedBookingDTO = modelMapper.map(booking, BookingDTO.class);
 
         return Response.builder()
@@ -158,6 +157,8 @@ public class BookingServiceImpl implements BookingService {
         Booking existingBooking = bookingRepository.findById(bookingDTO.getId())
                 .orElseThrow(()-> new NotFoundException("Booking Not Found"));
 
+        // Admin-only override: no state machine enforcement here by design.
+        // Direct status mutation allows correcting corrupt state or handling edge cases.
         if (bookingDTO.getBookingStatus() != null) {
             existingBooking.setBookingStatus(bookingDTO.getBookingStatus());
         }

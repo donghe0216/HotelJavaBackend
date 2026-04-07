@@ -35,6 +35,7 @@ public class SecurityFilter {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity httpSecurity) throws Exception {
 
+        // CSRF disabled: stateless JWT auth uses no session cookies, so CSRF tokens are not needed
         httpSecurity.csrf(AbstractHttpConfigurer::disable)
                 .cors(Customizer.withDefaults())
                 .exceptionHandling(exception ->

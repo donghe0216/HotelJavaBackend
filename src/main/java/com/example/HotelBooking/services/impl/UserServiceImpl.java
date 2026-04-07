@@ -37,6 +37,7 @@ public class UserServiceImpl implements UserService {
     public Response registerUser(RegistrationRequest registrationRequest) {
         UserRole role = UserRole.CUSTOMER;
 
+        // Role defaults to CUSTOMER; caller can override — no server-side role restriction enforced here
         if (registrationRequest.getRole() != null) {
             role = registrationRequest.getRole();
         }
@@ -101,8 +102,6 @@ public class UserServiceImpl implements UserService {
                 .orElseThrow(()-> new NotFoundException("User Not Found"));
 
 
-        log.info("Inside getOwnAccountDetails user email is {}", email);
-
         UserDTO userDTO = modelMapper.map(user, UserDTO.class);
 
         return Response.builder()
@@ -124,13 +123,13 @@ public class UserServiceImpl implements UserService {
     @Override
     public Response updateOwnAccount(UserUpdateRequest request) {
        User existingUser = getCurrentLoggedInUser();
-       log.info("Inside update user");
 
         if (request.getEmail() != null) existingUser.setEmail(request.getEmail());
         if (request.getFirstName() != null) existingUser.setFirstName(request.getFirstName());
         if (request.getLastName() != null) existingUser.setLastName(request.getLastName());
         if (request.getPhoneNumber() != null) existingUser.setPhoneNumber(request.getPhoneNumber());
 
+        // Re-encode only when a new password is explicitly provided; empty string is treated as "no change"
         if (request.getPassword() != null && !request.getPassword().isEmpty()) {
             existingUser.setPassword(passwordEncoder.encode(request.getPassword()));
         }

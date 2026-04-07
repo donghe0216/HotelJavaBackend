@@ -39,9 +39,9 @@ public class Room {
     @Min(value = 1, message = "capacity must be at least 1")
     private Integer capacity;
 
-    private String description; //additional data for the room
+    private String description;
 
-    private String imageUrl; //this will hold the room picture
+    private String imageUrl;
 
 
 }

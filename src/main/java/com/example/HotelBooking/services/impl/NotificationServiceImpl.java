@@ -52,11 +52,11 @@ public class NotificationServiceImpl implements NotificationService {
 
     @Override
     public void sendSms() {
-
+        // Not yet implemented — placeholder for future SMS integration
     }
 
     @Override
     public void sendWhatsapp() {
-
+        // Not yet implemented — placeholder for future WhatsApp integration
     }
 }

@@ -18,7 +18,8 @@ import java.util.function.Function;
 @Slf4j
 public class JwtUtils {
 
-    private static final long EXPIRATION_TIME_IN_MILSEC = 100L * 60L * 60L * 24L * 30L * 6L; //this will expires in 6 months
+    // 1000ms × 60s × 60m × 24h × 30d × 6 = ~6 months
+    private static final long EXPIRATION_TIME_IN_MILSEC = 1000L * 60L * 60L * 24L * 30L * 6L;
     private SecretKey key;
 
     @Value("${secreteJwtString}")

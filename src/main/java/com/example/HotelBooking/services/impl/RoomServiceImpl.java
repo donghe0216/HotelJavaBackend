@@ -63,6 +63,7 @@ public class RoomServiceImpl implements RoomService {
         // and keep the DB constraint as a safety net.
         Room roomToSave = modelMapper.map(roomDTO, Room.class);
 
+        // Image is optional; rooms without a photo are valid
         if (imageFile != null){
             String imagePath = saveImageToFrontend(imageFile);
             roomToSave.setImageUrl(imagePath);
@@ -163,17 +164,14 @@ public class RoomServiceImpl implements RoomService {
     @Override
     public Response getAvailableRooms(LocalDate checkInDate, LocalDate checkOutDate, RoomType roomType) {
 
-        //validation: Ensure the check-in date is not before today
         if (checkInDate.isBefore(LocalDate.now())){
             throw new InvalidBookingStateAndDateException("check in date cannot be before today ");
         }
 
-        //validation: Ensure the check-out date is not before check in date
         if (checkOutDate.isBefore(checkInDate)){
             throw new InvalidBookingStateAndDateException("check out date cannot be before check in date ");
         }
 
-        //validation: Ensure the check-in date is not same as check out date
         if (checkInDate.isEqual(checkOutDate)){
             throw new InvalidBookingStateAndDateException("check in date cannot be equal to check out date ");
         }
@@ -267,11 +265,10 @@ public class RoomServiceImpl implements RoomService {
         // [Bug fixed] Originally threw IllegalArgumentException → fell to catch-all handler → 500.
         // Found via TC-R-03: non-image file upload returned 500 instead of 400.
         // Fixed by throwing NameValueRequiredException → GlobalExceptionHandler maps to 400.
-        if (!imageFile.getContentType().startsWith("image/")){
+        if (imageFile.getContentType() == null || !imageFile.getContentType().startsWith("image/")){
             throw new NameValueRequiredException("Only image files are allowed");
         }
 
-        //Create directory to store image if it doesn exist
         File directory = new File(IMAGE_DIRECTORY_FRONTEND);
 
         if (!directory.exists()){
@@ -289,6 +286,7 @@ public class RoomServiceImpl implements RoomService {
             throw  new IllegalArgumentException(ex.getMessage());
         }
 
+        // Return relative URL for frontend consumption, not the absolute filesystem path
         return "/rooms/" + uniqueFileName;
 
     }

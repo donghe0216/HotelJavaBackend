@@ -36,7 +36,7 @@ public class User {
     private String phoneNumber;
 
     @Enumerated(EnumType.STRING)
-    private UserRole role; //e.g CUSTOMER, ADMIN
+    private UserRole role;
 
     private final LocalDateTime createdAt = LocalDateTime.now();
 

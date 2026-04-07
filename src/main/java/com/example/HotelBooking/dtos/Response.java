@@ -15,6 +15,7 @@ import java.util.List;
 @AllArgsConstructor
 @NoArgsConstructor
 @Builder
+// Null fields are excluded from the JSON response to keep payloads minimal
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class Response {
 
@@ -39,7 +40,6 @@ public class Response {
     private RoomDTO room;
     private List<RoomDTO> rooms;
 
-    //
     private NotificationDTO notification;
     private List<NotificationDTO> notifications;
 

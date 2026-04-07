@@ -26,7 +26,7 @@ public class Booking {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(cascade = CascadeType.REMOVE)  // meaning when a user is deleted all associated booking of the user will be deleted
+    @ManyToOne(cascade = CascadeType.REMOVE)  // Cascade delete: removing a user purges all their bookings
     @JoinColumn(name = "user_id")
     private User user;
 

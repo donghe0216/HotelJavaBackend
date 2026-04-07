@@ -26,7 +26,7 @@ public class CustomAuthenticationEntryPoint implements AuthenticationEntryPoint 
             throws IOException, ServletException {
 
         Response errorResponse = Response.builder()
-                .status(HttpStatus.UNAUTHORIZED.value()) //401 invid token
+                .status(HttpStatus.UNAUTHORIZED.value())
                 .message(authException.getMessage())
                 .build();
 

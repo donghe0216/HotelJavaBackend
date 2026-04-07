@@ -17,13 +17,13 @@ public class BookingCodeGenerator {
     public String generateBookingReference(){
         String bookingReference;
 
-        // keep generating until a unique code is found
+        // Retry until unique due to potential collision in the reference space
         do{
-            bookingReference = generateRandomAlphaNumericCode(10); //genrate code of length 10
+            bookingReference = generateRandomAlphaNumericCode(10);
 
-        }while (isBookingReferenceExist(bookingReference)); //check if the code already exist. if it does't, exit
+        }while (isBookingReferenceExist(bookingReference));
 
-        saveBookingReferenceToDatabase(bookingReference); //save the code to database
+        saveBookingReferenceToDatabase(bookingReference);
 
         return bookingReference;
     }
@@ -31,6 +31,7 @@ public class BookingCodeGenerator {
 
     private String generateRandomAlphaNumericCode(int length){
 
+        // Excludes visually ambiguous characters (0/O, 1/I) to reduce transcription errors
         String characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ123456789";
         Random random = new Random();
 

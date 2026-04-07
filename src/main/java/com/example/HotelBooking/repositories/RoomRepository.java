@@ -21,6 +21,8 @@ public interface RoomRepository extends JpaRepository<Room, Long> {
     Optional<Room> findByIdWithLock(@Param("id") Long id);
 
 
+    // :roomType IS NULL makes the type filter optional — passes when no type is specified
+    // Overlap condition mirrors isRoomAvailable: excludes rooms with active bookings in the date range
     @Query("""
             SELECT r FROM Room r
             WHERE
@@ -40,6 +42,8 @@ public interface RoomRepository extends JpaRepository<Room, Long> {
     );
 
 
+    // CAST to string enables LIKE on numeric fields (roomNumber, price, capacity)
+    // Description uses explicit CONCAT to avoid vendor-specific wildcard handling
     @Query("""
                 SELECT r FROM Room r
                 WHERE CAST(r.roomNumber AS string) LIKE %:searchParam%

@@ -11,12 +11,15 @@ import java.util.Optional;
 
 public interface BookingRepository extends JpaRepository<Booking, Long> {
 
-    List<Booking> findByUserId(Long userId); // Fetch all bookings for a specific user
+    List<Booking> findByUserId(Long userId);
 
 
     Optional<Booking> findByBookingReference(String bookingReference);
 
 
+    // Standard interval overlap: new booking [checkIn, checkOut) overlaps existing if
+    // checkIn < existing.checkOut AND checkOut > existing.checkIn
+    // Only active statuses (BOOKED, CHECKED_IN) block availability; CANCELLED/CHECKED_OUT are ignored
     @Query("""
                SELECT CASE WHEN COUNT(b) = 0 THEN true ELSE false END
                 FROM Booking b

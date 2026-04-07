@@ -15,6 +15,7 @@ public class CorsConfig {
             public void addCorsMappings(CorsRegistry registry) {
                 registry.addMapping("/**")
                         .allowedMethods("GET", "POST", "PUT", "DELETE")
+                        // Wildcard origin is intentional for local dev; restrict to specific origins in production
                         .allowedOrigins("*");
             }
         };

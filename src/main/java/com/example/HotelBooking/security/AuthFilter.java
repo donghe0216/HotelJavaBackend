@@ -52,6 +52,8 @@ public class AuthFilter extends OncePerRequestFilter {
             }
         }
 
+        // Invalid or missing token: SecurityContext remains empty, request proceeds as unauthenticated.
+        // Protected endpoints will be rejected downstream by authorization rules.
         filterChain.doFilter(request, response);
 
 

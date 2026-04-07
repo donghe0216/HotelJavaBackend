@@ -24,6 +24,7 @@ public class NotificationController {
     private final NotificationRepository notificationRepository;
     private final ModelMapper modelMapper;
 
+    // Intentional shortcut: no business logic needed here, so service layer is skipped
     @GetMapping("/all")
     @PreAuthorize("hasAuthority('ADMIN')")
     public ResponseEntity<Response> getAllNotifications() {

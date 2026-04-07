@@ -29,6 +29,7 @@ public class BookingController {
     }
 
 
+    // Publicly accessible by design: the booking reference acts as the lookup token
     @GetMapping("/{reference}")
     public ResponseEntity<Response> findBookingByReferenceNo(@PathVariable String reference){
         return ResponseEntity.ok(bookingService.findBookingByReferenceNo(reference));

@@ -31,6 +31,7 @@ public class AuthUser implements UserDetails {
         return user.getEmail();
     }
 
+    // Account lifecycle management not implemented — all checks hardcoded to true
     @Override
     public boolean isAccountNonExpired() {
         return true;
