@@ -432,11 +432,12 @@ class UserApiTest extends BaseApiTest {
     }
 
     @Test @Order(24)
-    @DisplayName("TC-U-24 | updateOwnAccount | [Bug] invalid email format accepted — returns 200")
+    @DisplayName("TC-U-24 | updateOwnAccount | invalid email format rejected — returns 400")
     void updateOwnAccount_invalidEmailFormat_returns200Bug() {
-        // Bug: UserUpdateRequest.email has no @Email constraint — email is optional on update (no @NotBlank needed),
-        // but an invalid format should still be rejected. Fix: add @Email (without @NotBlank) to UserUpdateRequest.email
-        // and @Valid to the controller method (returns 400 when email is present but malformed).
+        // [Bug history] Originally discovered as TC-U-24: UserUpdateRequest.email had no @Email constraint,
+        // so malformed emails like "not-an-email" were accepted and returned 200.
+        // Fix applied: @Email (without @NotBlank) added to UserUpdateRequest.email + @Valid on controller.
+        // Assertion updated from 200 → 400 once the fix was confirmed in production.
         Map<String, Object> body = new HashMap<>();
         body.put("email", "not-an-email");
 
@@ -446,17 +447,7 @@ class UserApiTest extends BaseApiTest {
         .when()
             .put("/users/update")
         .then()
-            // expected 400; current broken behaviour returns 200
-            .statusCode(200)
-            .body("status",  equalTo(200))
-            .body("message", equalTo("user updated successfully"));
-
-        System.out.println("⚠️  TC-U-24: invalid email accepted — missing @Email/@Valid validation");
-
-        // Restore original email so other tests are unaffected
-        Map<String, Object> restore = new HashMap<>();
-        restore.put("email", USER_EMAIL);
-        given().spec(customerSpec).body(restore).when().put("/users/update");
+            .statusCode(400);
     }
 
     @Test @Order(25)

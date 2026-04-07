@@ -325,7 +325,6 @@ class BookingServiceImplTest {
     void should_throw_when_roomId_is_null() {
         validBookingDTO.setRoomId(null);
         when(userService.getCurrentLoggedInUser()).thenReturn(testUser);
-        when(roomRepository.findByIdWithLock(null)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> bookingService.createBooking(validBookingDTO))
                 .isInstanceOf(NotFoundException.class)
