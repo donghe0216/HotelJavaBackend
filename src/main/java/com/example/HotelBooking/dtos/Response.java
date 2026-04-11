@@ -40,11 +40,7 @@ public class Response {
     private RoomDTO room;
     private List<RoomDTO> rooms;
 
-    //Payment data output
-    private PaymentDTO payment;
-    private List<PaymentDTO> payments;
-
-    //Payment data output
+    //
     private NotificationDTO notification;
     private List<NotificationDTO> notifications;
 

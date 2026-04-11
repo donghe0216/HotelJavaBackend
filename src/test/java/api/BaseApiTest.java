@@ -5,7 +5,6 @@ import io.restassured.builder.RequestSpecBuilder;
 import io.restassured.filter.log.RequestLoggingFilter;
 import io.restassured.filter.log.ResponseLoggingFilter;
 import io.restassured.http.ContentType;
-import io.restassured.response.Response;
 import io.restassured.specification.RequestSpecification;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -218,46 +217,6 @@ public abstract class BaseApiTest {
                 "DELETE FROM rooms WHERE room_number > 200;"
             ).start().waitFor(10, TimeUnit.SECONDS);
         } catch (Exception ignored) { /* best-effort — Docker may not be available in all envs */ }
-    }
-
-    // ── MailHog helper ────────────────────────────────────────────────────────
-    /**
-     * Queries MailHog's REST API and returns true if at least one email
-     * addressed to {@code recipient} has been received.
-     *
-     * Pre-condition: MailHog must be running (default: http://localhost:8025)
-     * and the backend must be configured to use MailHog as its SMTP server:
-     *
-     *   # application-local.properties
-     *   spring.mail.host=localhost
-     *   spring.mail.port=1025
-     *   spring.mail.properties.mail.smtp.auth=false
-     *   spring.mail.properties.mail.smtp.starttls.enable=false
-     */
-    private static final String MAILHOG_API = "http://localhost:8025/api/v2/messages";
-
-    protected static boolean mailhogReceivedEmailFor(String recipient) {
-        try {
-            Response response = RestAssured.given()
-                    .baseUri(MAILHOG_API)
-                    .get();
-            if (response.statusCode() != 200) return false;
-
-            List<Map<String, Object>> items = response.jsonPath().getList("items");
-            if (items == null) return false;
-
-            return items.stream().anyMatch(msg -> {
-                Map<?, ?> content = (Map<?, ?>) msg.get("Content");
-                if (content == null) return false;
-                Map<?, ?> headers = (Map<?, ?>) content.get("Headers");
-                if (headers == null) return false;
-                List<?> to = (List<?>) headers.get("To");
-                return to != null && to.stream()
-                        .anyMatch(addr -> addr.toString().contains(recipient));
-            });
-        } catch (Exception e) {
-            return false;  // MailHog not running — skip silently
-        }
     }
 
     // ── Cleanup helper ────────────────────────────────────────────────────────

@@ -58,7 +58,7 @@ class BookingApiTest extends BaseApiTest {
     }
 
     @Test @Order(2)
-    @DisplayName("TC-B-02 | createBooking | new booking has status BOOKED and payment PENDING")
+    @DisplayName("TC-B-02 | createBooking | new booking has status BOOKED")
     void createBooking_newBooking_hasCorrectInitialStatus() {
         // Use a different date range to avoid conflict with TC-B-01
         Map<String, Object> body = bookingPayload(SEED_ROOM_ID, inDays(10), inDays(12));
@@ -78,8 +78,7 @@ class BookingApiTest extends BaseApiTest {
             .get("/bookings/{ref}", ref)
         .then()
             .statusCode(200)
-            .body("booking.bookingStatus",  equalTo("BOOKED"))
-            .body("booking.paymentStatus",  equalTo("PENDING"));
+            .body("booking.bookingStatus", equalTo("BOOKED"));
     }
 
     @Test @Order(3)
@@ -220,15 +219,14 @@ class BookingApiTest extends BaseApiTest {
     }
 
     @Test @Order(12)
-    @DisplayName("TC-B-12 | updateBooking | update both statuses → persisted")
-    void updateBooking_success_updateBothStatuses() {
+    @DisplayName("TC-B-12 | updateBooking | BOOKED → CHECKED_IN → persisted")
+    void updateBooking_success_checkedIn() {
         // TODO: test order dependency — this test relies on data created by a previous test, refactor to use @BeforeEach or independent fixtures
         Assumptions.assumeTrue(createdBookingId != null,
                 "Skipped: TC-B-10 must pass first to provide createdBookingId");
         Map<String, Object> updateBody = new HashMap<>();
         updateBody.put("id",            createdBookingId);
         updateBody.put("bookingStatus", "CHECKED_IN");
-        updateBody.put("paymentStatus", "COMPLETED");
 
         given()
             .spec(adminSpec)
@@ -243,63 +241,10 @@ class BookingApiTest extends BaseApiTest {
         given().spec(adminSpec).when()
                .get("/bookings/{ref}", createdBookingRef)
                .then()
-               .body("booking.bookingStatus", equalTo("CHECKED_IN"))
-               .body("booking.paymentStatus", equalTo("COMPLETED"));
+               .body("booking.bookingStatus", equalTo("CHECKED_IN"));
     }
 
     @Test @Order(13)
-    @DisplayName("TC-B-13 | updateBooking | bookingStatus only — paymentStatus unchanged")
-    void updateBooking_onlyBookingStatus_paymentStatusUnchanged() {
-        // TODO: test order dependency — this test relies on data created by a previous test, refactor to use @BeforeEach or independent fixtures
-        Assumptions.assumeTrue(createdBookingId != null,
-                "Skipped: TC-B-12 must pass first to provide createdBookingId");
-        Map<String, Object> updateBody = new HashMap<>();
-        updateBody.put("id",            createdBookingId);
-        updateBody.put("bookingStatus", "CANCELLED");
-        // paymentStatus intentionally omitted → must remain PAID from TC-B-12
-
-        given()
-            .spec(adminSpec)
-            .body(updateBody)
-        .when()
-            .put("/bookings/update")
-        .then()
-            .statusCode(200);
-
-        given().spec(adminSpec).when()
-               .get("/bookings/{ref}", createdBookingRef)
-               .then()
-               .body("booking.bookingStatus", equalTo("CANCELLED"))
-               .body("booking.paymentStatus", equalTo("COMPLETED"));   // unchanged
-    }
-
-    @Test @Order(14)
-    @DisplayName("TC-B-14 | updateBooking | paymentStatus only — bookingStatus unchanged")
-    void updateBooking_onlyPaymentStatus_bookingStatusUnchanged() {
-        // TODO: test order dependency — this test relies on data created by a previous test, refactor to use @BeforeEach or independent fixtures
-        Assumptions.assumeTrue(createdBookingId != null,
-                "Skipped: TC-B-13 must pass first to provide createdBookingId");
-        Map<String, Object> updateBody = new HashMap<>();
-        updateBody.put("id",            createdBookingId);
-        updateBody.put("paymentStatus", "REFUNDED");
-        // bookingStatus intentionally omitted → must remain CANCELLED from TC-B-13
-
-        given()
-            .spec(adminSpec)
-            .body(updateBody)
-        .when()
-            .put("/bookings/update")
-        .then()
-            .statusCode(200);
-
-        given().spec(adminSpec).when()
-               .get("/bookings/{ref}", createdBookingRef)
-               .then()
-               .body("booking.bookingStatus", equalTo("CANCELLED"))  // unchanged
-               .body("booking.paymentStatus", equalTo("REFUNDED"));
-    }
-
-    @Test @Order(15)
     @DisplayName("TC-B-15 | updateBooking | id=null → 404")
     void updateBooking_fail_nullId() {
         Map<String, Object> updateBody = new HashMap<>();

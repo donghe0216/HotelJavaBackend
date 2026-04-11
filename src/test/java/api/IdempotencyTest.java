@@ -116,7 +116,7 @@ class IdempotencyTest extends BaseApiTest {
             .extract().path("booking.id");
 
         java.util.Map<String, Object> updateBody =
-            java.util.Map.of("id", id, "bookingStatus", "CHECKED_IN", "paymentStatus", "COMPLETED");
+            java.util.Map.of("id", id, "bookingStatus", "CHECKED_IN");
 
         given().spec(adminSpec).body(updateBody)
                .when().put("/bookings/update")
@@ -131,8 +131,7 @@ class IdempotencyTest extends BaseApiTest {
                .when().get("/bookings/{ref}", ref)
                .then()
                .statusCode(200)
-               .body("booking.bookingStatus", equalTo("CHECKED_IN"))
-               .body("booking.paymentStatus", equalTo("COMPLETED"));
+               .body("booking.bookingStatus", equalTo("CHECKED_IN"));
     }
 
     // TC-IDEM-05: a single booking creation must produce exactly one notification record

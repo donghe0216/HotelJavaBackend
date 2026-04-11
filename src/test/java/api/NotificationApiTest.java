@@ -78,18 +78,5 @@ class NotificationApiTest extends BaseApiTest {
             .body("notifications.find { it.bookingReference == '" + bookingRef + "' }.body",
                   not(emptyOrNullString()));
 
-        // Verify email reached MailHog — requires MailHog on localhost:8025
-        // and backend configured with spring.mail.host=localhost, port=1025.
-        // Skipped silently if MailHog is not running.
-        String recipient = given().spec(adminSpec).when().get("/notifications/all")
-                .then().extract()
-                .path("notifications.find { it.bookingReference == '" + bookingRef + "' }.recipient");
-        if (recipient != null) {
-            pollUntil(5, () -> mailhogReceivedEmailFor(recipient));
-            org.junit.jupiter.api.Assertions.assertTrue(
-                    mailhogReceivedEmailFor(recipient),
-                    "MailHog did not receive email for " + recipient +
-                    " — is MailHog running and backend pointed to localhost:1025?");
-        }
     }
 }

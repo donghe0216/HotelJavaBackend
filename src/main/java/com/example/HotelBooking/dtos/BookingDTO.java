@@ -2,7 +2,6 @@ package com.example.HotelBooking.dtos;
 
 
 import com.example.HotelBooking.enums.BookingStatus;
-import com.example.HotelBooking.enums.PaymentStatus;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.AllArgsConstructor;
@@ -29,8 +28,6 @@ public class BookingDTO {
 
     private RoomDTO room;
     private Long roomId;
-
-    private PaymentStatus paymentStatus;
 
     private LocalDate checkInDate;
     private LocalDate checkOutDate;

@@ -75,7 +75,7 @@ class StateConsistencyTest extends BaseApiTest {
 
         given()
             .spec(adminSpec)
-            .body(java.util.Map.of("id", id, "bookingStatus", "CHECKED_IN", "paymentStatus", "COMPLETED"))
+            .body(java.util.Map.of("id", id, "bookingStatus", "CHECKED_IN"))
         .when()
             .put("/bookings/update")
         .then()
@@ -87,8 +87,7 @@ class StateConsistencyTest extends BaseApiTest {
             .get("/bookings/{ref}", ref)
         .then()
             .statusCode(200)
-            .body("booking.bookingStatus", equalTo("CHECKED_IN"))
-            .body("booking.paymentStatus", equalTo("COMPLETED"));
+            .body("booking.bookingStatus", equalTo("CHECKED_IN"));
     }
 
     // TC-SC-03: newly created booking appears in the user's booking history

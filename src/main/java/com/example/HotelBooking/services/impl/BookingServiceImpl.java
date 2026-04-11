@@ -7,7 +7,6 @@ import com.example.HotelBooking.entities.Booking;
 import com.example.HotelBooking.entities.Room;
 import com.example.HotelBooking.entities.User;
 import com.example.HotelBooking.enums.BookingStatus;
-import com.example.HotelBooking.enums.PaymentStatus;
 import com.example.HotelBooking.exceptions.InvalidBookingStateAndDateException;
 import com.example.HotelBooking.exceptions.NotFoundException;
 import com.example.HotelBooking.repositories.BookingRepository;
@@ -113,18 +112,15 @@ public class BookingServiceImpl implements BookingService {
         booking.setTotalPrice(totalPrice);
         booking.setBookingReference(bookingReference);
         booking.setBookingStatus(BookingStatus.BOOKED);
-        booking.setPaymentStatus(PaymentStatus.PENDING);
         booking.setCreatedAt(LocalDateTime.now());
 
         bookingRepository.save(booking); //save to database
 
         //send notification via email (async — failure does not affect response)
-        String paymentUrl = "http://localhost:3000/payment/" + bookingReference + "/" + totalPrice;
-        log.info("PAYMENT LINK: {}", paymentUrl);
         NotificationDTO notificationDTO = NotificationDTO.builder()
                 .recipient(currentUser.getEmail())
                 .subject("Booking Confirmation")
-                .body(String.format("Your booking has been created successfully. Please proceed with your payment using the payment link below \n%s", paymentUrl))
+                .body(String.format("Your booking has been confirmed. Booking reference: %s. Payment is due at the hotel upon check-in.", bookingReference))
                 .bookingReference(bookingReference)
                 .build();
         notificationService.sendEmail(notificationDTO);
@@ -162,10 +158,6 @@ public class BookingServiceImpl implements BookingService {
 
         if (bookingDTO.getBookingStatus() != null) {
             existingBooking.setBookingStatus(bookingDTO.getBookingStatus());
-        }
-
-        if (bookingDTO.getPaymentStatus() != null) {
-            existingBooking.setPaymentStatus(bookingDTO.getPaymentStatus());
         }
 
         bookingRepository.save(existingBooking);

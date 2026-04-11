@@ -50,13 +50,5 @@ public class NotificationServiceImpl implements NotificationService {
         notificationRepository.save(notificationToSave);
     }
 
-    @Override
-    public void sendSms() {
 
-    }
-
-    @Override
-    public void sendWhatsapp() {
-
-    }
 }
