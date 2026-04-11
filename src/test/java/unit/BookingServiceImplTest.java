@@ -5,7 +5,6 @@ import com.example.HotelBooking.dtos.Response;
 import com.example.HotelBooking.entities.Booking;
 import com.example.HotelBooking.entities.Room;
 import com.example.HotelBooking.enums.BookingStatus;
-import com.example.HotelBooking.enums.PaymentStatus;
 import com.example.HotelBooking.exceptions.NotFoundException;
 import com.example.HotelBooking.entities.User;
 import com.example.HotelBooking.enums.RoomType;
@@ -21,7 +20,11 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.MethodSource;
+
+import java.util.stream.Stream;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -204,7 +207,7 @@ class BookingServiceImplTest {
     }
 
     @Test
-    @DisplayName("TC-BS-08 | createBooking | valid input → saved with BOOKED/PENDING, sends email")
+    @DisplayName("TC-BS-08 | createBooking | valid input → saved with BOOKED status, sends email")
     void validBooking_shouldSaveAndReturn200() {
         validBookingDTO.setCheckInDate(LocalDate.now().plusDays(1));
         validBookingDTO.setCheckOutDate(LocalDate.now().plusDays(2));
@@ -218,7 +221,6 @@ class BookingServiceImplTest {
             Booking b = inv.getArgument(0);
             BookingDTO dto = new BookingDTO();
             dto.setBookingStatus(b.getBookingStatus());
-            dto.setPaymentStatus(b.getPaymentStatus());
             dto.setBookingReference(b.getBookingReference());
             dto.setTotalPrice(b.getTotalPrice());
             dto.setCheckInDate(b.getCheckInDate());
@@ -234,7 +236,6 @@ class BookingServiceImplTest {
 
         BookingDTO result = response.getBooking();
         assertThat(result.getBookingStatus()).isEqualTo(BookingStatus.BOOKED);
-        assertThat(result.getPaymentStatus()).isEqualTo(PaymentStatus.PENDING);
         assertThat(result.getBookingReference()).isNotNull();
         assertThat(result.getBookingReference()).matches("[A-Z1-9]{10}");
         assertThat(result.getTotalPrice()).isEqualByComparingTo(new BigDecimal("100.00"));
@@ -270,17 +271,17 @@ class BookingServiceImplTest {
         verify(bookingRepository, never()).save(any());
     }
 
-    @Test
-    @DisplayName("TC-BS-11 | updateBooking | bookingStatus only — paymentStatus unchanged")
-    void updateBooking_onlyBookingStatus_paymentStatusUnchanged() {
+    @ParameterizedTest(name = "{0} → {1}")
+    @MethodSource("validTransitions")
+    @DisplayName("TC-BS-11 | updateBooking | valid transitions (4 cases) → 200 + status persisted")
+    void validStatusTransition_shouldSaveAndReturn200(BookingStatus from, BookingStatus to) {
         Booking existing = new Booking();
         existing.setId(1L);
-        existing.setBookingStatus(BookingStatus.BOOKED);
-        existing.setPaymentStatus(PaymentStatus.COMPLETED);
+        existing.setBookingStatus(from);
 
         BookingDTO dto = new BookingDTO();
         dto.setId(1L);
-        dto.setBookingStatus(BookingStatus.CANCELLED);
+        dto.setBookingStatus(to);
 
         when(bookingRepository.findById(1L)).thenReturn(Optional.of(existing));
         when(bookingRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
@@ -288,36 +289,64 @@ class BookingServiceImplTest {
         Response response = bookingService.updateBooking(dto);
 
         assertThat(response.getStatus()).isEqualTo(200);
-
         ArgumentCaptor<Booking> captor = ArgumentCaptor.forClass(Booking.class);
         verify(bookingRepository).save(captor.capture());
-        assertThat(captor.getValue().getBookingStatus()).isEqualTo(BookingStatus.CANCELLED);
-        assertThat(captor.getValue().getPaymentStatus()).isEqualTo(PaymentStatus.COMPLETED);
+        assertThat(captor.getValue().getBookingStatus()).isEqualTo(to);
     }
 
-    @Test
-    @DisplayName("TC-BS-12 | updateBooking | paymentStatus only — bookingStatus unchanged")
-    void updateBooking_onlyPaymentStatus_bookingStatusUnchanged() {
+    static Stream<Arguments> validTransitions() {
+        return Stream.of(
+            // Guest arrives and checks in at the front desk
+            Arguments.of(BookingStatus.BOOKED,     BookingStatus.CHECKED_IN),
+            // Booking cancelled before guest arrives
+            Arguments.of(BookingStatus.BOOKED,     BookingStatus.CANCELLED),
+            // Guest did not arrive — room was held but never used
+            Arguments.of(BookingStatus.BOOKED,     BookingStatus.NO_SHOW),
+            // Guest completes their stay and checks out
+            Arguments.of(BookingStatus.CHECKED_IN, BookingStatus.CHECKED_OUT)
+        );
+    }
+
+    @ParameterizedTest(name = "{0} → {1}")
+    @MethodSource("invalidTransitions")
+    @DisplayName("TC-BS-12 | updateBooking | invalid transitions (11 cases) → InvalidBookingStateAndDateException, no save")
+    void invalidStatusTransition_shouldThrow(BookingStatus from, BookingStatus to) {
         Booking existing = new Booking();
         existing.setId(1L);
-        existing.setBookingStatus(BookingStatus.CHECKED_IN);
-        existing.setPaymentStatus(PaymentStatus.PENDING);
+        existing.setBookingStatus(from);
 
         BookingDTO dto = new BookingDTO();
         dto.setId(1L);
-        dto.setPaymentStatus(PaymentStatus.COMPLETED);
+        dto.setBookingStatus(to);
 
         when(bookingRepository.findById(1L)).thenReturn(Optional.of(existing));
-        when(bookingRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-        Response response = bookingService.updateBooking(dto);
+        assertThatThrownBy(() -> bookingService.updateBooking(dto))
+                .isInstanceOf(InvalidBookingStateAndDateException.class)
+                .hasMessageContaining("Invalid status transition");
 
-        assertThat(response.getStatus()).isEqualTo(200);
+        verify(bookingRepository, never()).save(any());
+    }
 
-        ArgumentCaptor<Booking> captor = ArgumentCaptor.forClass(Booking.class);
-        verify(bookingRepository).save(captor.capture());
-        assertThat(captor.getValue().getBookingStatus()).isEqualTo(BookingStatus.CHECKED_IN);
-        assertThat(captor.getValue().getPaymentStatus()).isEqualTo(PaymentStatus.COMPLETED);
+    static Stream<Arguments> invalidTransitions() {
+        return Stream.of(
+            // Terminal state: CHECKED_OUT
+            Arguments.of(BookingStatus.CHECKED_OUT, BookingStatus.BOOKED),
+            Arguments.of(BookingStatus.CHECKED_OUT, BookingStatus.CHECKED_IN),
+            Arguments.of(BookingStatus.CHECKED_OUT, BookingStatus.CANCELLED),
+            // Terminal state: CANCELLED
+            Arguments.of(BookingStatus.CANCELLED,   BookingStatus.BOOKED),
+            Arguments.of(BookingStatus.CANCELLED,   BookingStatus.CHECKED_IN),
+            Arguments.of(BookingStatus.CANCELLED,   BookingStatus.CHECKED_OUT),
+            // Terminal state: NO_SHOW
+            Arguments.of(BookingStatus.NO_SHOW,     BookingStatus.BOOKED),
+            Arguments.of(BookingStatus.NO_SHOW,     BookingStatus.CHECKED_IN),
+            Arguments.of(BookingStatus.NO_SHOW,     BookingStatus.CHECKED_OUT),
+            // Skip transition: BOOKED → CHECKED_OUT (bypasses CHECKED_IN)
+            Arguments.of(BookingStatus.BOOKED,      BookingStatus.CHECKED_OUT),
+            // Revert: CHECKED_IN → BOOKED
+            Arguments.of(BookingStatus.CHECKED_IN,  BookingStatus.BOOKED)
+        );
     }
 
     @Test

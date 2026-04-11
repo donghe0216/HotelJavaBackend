@@ -157,6 +157,7 @@ public class BookingServiceImpl implements BookingService {
                 .orElseThrow(()-> new NotFoundException("Booking Not Found"));
 
         if (bookingDTO.getBookingStatus() != null) {
+            validateStatusTransition(existingBooking.getBookingStatus(), bookingDTO.getBookingStatus());
             existingBooking.setBookingStatus(bookingDTO.getBookingStatus());
         }
 
@@ -168,6 +169,26 @@ public class BookingServiceImpl implements BookingService {
                 .build();
     }
 
+
+    /**
+     * Business rule: only certain status transitions are valid for an offline-payment hotel.
+     * BOOKED is the only non-terminal state that allows branching (check-in / cancel / no-show).
+     * CHECKED_IN can only progress to CHECKED_OUT — reverting or cancelling after arrival is not supported.
+     * CHECKED_OUT, CANCELLED, and NO_SHOW are terminal: the booking lifecycle has ended.
+     */
+    private void validateStatusTransition(BookingStatus current, BookingStatus next) {
+        boolean valid = switch (current) {
+            case BOOKED      -> next == BookingStatus.CHECKED_IN
+                             || next == BookingStatus.CANCELLED
+                             || next == BookingStatus.NO_SHOW;
+            case CHECKED_IN  -> next == BookingStatus.CHECKED_OUT;
+            case CHECKED_OUT, CANCELLED, NO_SHOW -> false;
+        };
+        if (!valid) {
+            throw new InvalidBookingStateAndDateException(
+                    "Invalid status transition: " + current + " → " + next);
+        }
+    }
 
     private BigDecimal calculateTotalPrice(Room room, BookingDTO bookingDTO){
         BigDecimal pricePerNight = room.getPricePerNight();
