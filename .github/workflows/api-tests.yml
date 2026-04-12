@@ -174,13 +174,27 @@ jobs:
             -Djacoco.dataFile=/tmp/jacoco.exec \
             --no-transfer-progress
 
-      # ── 10. Upload Surefire + JaCoCo reports ──────────────────────
-      - name: Upload Surefire report
+      # ── 11. Generate Surefire HTML report ─────────────────────────
+      #    Converts the XML test results into a browsable HTML report.
+      - name: Generate Surefire HTML report
+        if: always()
+        run: mvn surefire-report:report-only --no-transfer-progress
+
+      # ── 12. Upload Surefire + JaCoCo reports ──────────────────────
+      - name: Upload Surefire XML report
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: surefire-report
+          name: surefire-xml-report
           path: target/surefire-reports/
+          retention-days: 7
+
+      - name: Upload Surefire HTML report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: surefire-html-report
+          path: target/site/
           retention-days: 7
 
       - name: Upload JaCoCo coverage report

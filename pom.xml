@@ -135,6 +135,12 @@
                 </configuration>
             </plugin>
 
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-report-plugin</artifactId>
+                <version>3.5.2</version>
+            </plugin>
+
             <!--
                 Maven Surefire: exclude @SpringBootTest context tests when running against
                 a live server to avoid port 9090 conflicts and missing DB credential issues.
