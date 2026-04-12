@@ -25,6 +25,13 @@ import static org.hamcrest.Matchers.*;
  * Pre-condition:
  *   A room with roomId=SEED_ROOM_ID must exist in the DB before running.
  *   Adjust SEED_ROOM_ID to match a seeded room in your test environment.
+ *
+ * Routes covered:
+ *   POST   /bookings                       (CUSTOMER / authenticated)
+ *   GET    /bookings/all                   (ADMIN)
+ *   GET    /bookings/{ref}
+ *   PUT    /bookings/update                (ADMIN)
+ *   POST   /bookings/{id}/cancel           (CUSTOMER / ADMIN)
  */
 @DisplayName("Booking API Tests")
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
@@ -279,6 +286,53 @@ class BookingApiTest extends BaseApiTest {
             .body(updateBody)
         .when()
             .put("/bookings/update")
+        .then()
+            .statusCode(404)
+            .body("message", containsStringIgnoringCase("not found"));
+    }
+
+    @Test @Order(17)
+    @DisplayName("TC-B-17 | cancelBooking | BOOKED booking cancelled by owner → 200, status persisted as CANCELLED")
+    void cancelBooking_success() {
+        Long roomId = resolveFirstRoomId();
+        org.junit.jupiter.api.Assumptions.assumeTrue(roomId != null, "Skipped: no room in DB");
+
+        // Create a fresh booking with check-in far enough away to satisfy the 24-hour policy
+        String ref = given()
+            .spec(customerSpec)
+            .body(bookingPayload(roomId, inDays(5), inDays(7)))
+        .when()
+            .post("/bookings")
+        .then()
+            .statusCode(200)
+            .extract().path("booking.bookingReference");
+
+        Integer id = given().spec(adminSpec).when()
+            .get("/bookings/{ref}", ref)
+            .then().extract().path("booking.id");
+
+        given()
+            .spec(customerSpec)
+        .when()
+            .post("/bookings/{id}/cancel", id)
+        .then()
+            .statusCode(200)
+            .body("message", containsStringIgnoringCase("cancelled"));
+
+        // Verify status is actually persisted — not just returned in the response
+        given().spec(adminSpec).when()
+            .get("/bookings/{ref}", ref)
+        .then()
+            .body("booking.bookingStatus", equalTo("CANCELLED"));
+    }
+
+    @Test @Order(18)
+    @DisplayName("TC-B-18 | cancelBooking | booking not found → 404")
+    void cancelBooking_notFound() {
+        given()
+            .spec(customerSpec)
+        .when()
+            .post("/bookings/{id}/cancel", 999999L)
         .then()
             .statusCode(404)
             .body("message", containsStringIgnoringCase("not found"));

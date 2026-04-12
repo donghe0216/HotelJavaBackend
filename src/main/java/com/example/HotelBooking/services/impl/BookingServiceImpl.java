@@ -193,10 +193,12 @@ public class BookingServiceImpl implements BookingService {
                     "Cannot cancel a booking with status: " + booking.getBookingStatus());
         }
 
-        // Cancellation is not allowed on or after the check-in date.
-        if (!LocalDate.now().isBefore(booking.getCheckInDate())) {
+        // Cancellation must be made more than 24 hours before check-in.
+        // checkInDate is a calendar date (no time component), so "more than 24 hours before"
+        // means today's date must be before checkInDate - 1 day, i.e. checkInDate >= day after tomorrow.
+        if (!LocalDate.now().plusDays(1).isBefore(booking.getCheckInDate())) {
             throw new InvalidBookingStateAndDateException(
-                    "Cannot cancel a booking on or after the check-in date");
+                    "Cancellation must be made more than 24 hours before check-in");
         }
 
         booking.setBookingStatus(BookingStatus.CANCELLED);

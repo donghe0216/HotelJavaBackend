@@ -384,6 +384,80 @@ class AuthorizationTest extends BaseApiTest {
     }
 
     @Test @Order(25)
+    @DisplayName("TC-AUTH-CANCEL-01 | anonymous | POST /bookings/{id}/cancel → 401")
+    void anonymous_cancelBooking_returns401() {
+        given()
+            .spec(anonSpec)
+        .when()
+            .post("/bookings/{id}/cancel", 1L)
+        .then()
+            .statusCode(401);
+    }
+
+    @Test @Order(26)
+    @DisplayName("TC-AUTH-CANCEL-02 | CUSTOMER cancels another customer's booking → 403")
+    void customer_cancelOtherCustomerBooking_returns403() {
+        // Register a second customer and create a booking under their account
+        String emailB    = "cancel_other_" + System.currentTimeMillis() + "@hotel.com";
+        String passwordB = "OtherCustomer1234!";
+        given().spec(anonSpec).body(registrationPayload(emailB, passwordB))
+               .when().post("/auth/register").then().statusCode(200);
+        String tokenB = loginAndGetToken(emailB, passwordB);
+
+        Long roomId = resolveFirstRoomId();
+        org.junit.jupiter.api.Assumptions.assumeTrue(roomId != null, "Skipped: no room in DB");
+
+        Integer bookingId = given()
+            .header("Authorization", "Bearer " + tokenB)
+            .contentType("application/json").accept("application/json")
+            .body(bookingPayload(roomId, inDays(10), inDays(12)))
+        .when()
+            .post("/bookings")
+        .then()
+            .statusCode(200)
+            .extract().path("booking.id");
+
+        // customerSpec (customer A) attempts to cancel customer B's booking
+        given()
+            .spec(customerSpec)
+        .when()
+            .post("/bookings/{id}/cancel", bookingId)
+        .then()
+            .statusCode(403);
+
+        deleteAccount(tokenB);
+    }
+
+    @Test @Order(27)
+    @DisplayName("TC-AUTH-CANCEL-03 | ADMIN cancels any customer's booking → 200 (intended business rule)")
+    void admin_cancelAnyBooking_returns200() {
+        Long roomId = resolveFirstRoomId();
+        org.junit.jupiter.api.Assumptions.assumeTrue(roomId != null, "Skipped: no room in DB");
+
+        String ref = given()
+            .spec(customerSpec)
+            .body(bookingPayload(roomId, inDays(15), inDays(17)))
+        .when()
+            .post("/bookings")
+        .then()
+            .statusCode(200)
+            .extract().path("booking.bookingReference");
+
+        Integer id = given().spec(adminSpec).when()
+            .get("/bookings/{ref}", ref)
+            .then().extract().path("booking.id");
+
+        // Admin is allowed to cancel any booking regardless of ownership
+        given()
+            .spec(adminSpec)
+        .when()
+            .post("/bookings/{id}/cancel", id)
+        .then()
+            .statusCode(200)
+            .body("message", containsStringIgnoringCase("cancelled"));
+    }
+
+    @Test @Order(28)
     @DisplayName("TC-AUTH-25 | [Bug] IDOR | customer can read another customer's booking")
     void customerA_getCustomerB_bookingByRef_shouldReturn403_IDOR() {
         // Bug (P1 — IDOR): GET /bookings/{ref} only checks that the user is authenticated,

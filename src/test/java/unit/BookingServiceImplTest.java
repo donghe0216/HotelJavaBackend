@@ -8,6 +8,7 @@ import com.example.HotelBooking.enums.BookingStatus;
 import com.example.HotelBooking.exceptions.NotFoundException;
 import com.example.HotelBooking.entities.User;
 import com.example.HotelBooking.enums.RoomType;
+import com.example.HotelBooking.enums.UserRole;
 import com.example.HotelBooking.exceptions.InvalidBookingStateAndDateException;
 import com.example.HotelBooking.repositories.BookingRepository;
 import com.example.HotelBooking.repositories.RoomRepository;
@@ -79,6 +80,7 @@ class BookingServiceImplTest {
         testUser = new User();
         testUser.setId(1L);
         testUser.setEmail("customer@hotel.com");
+        testUser.setRole(UserRole.CUSTOMER);
 
         validBookingDTO = new BookingDTO();
         validBookingDTO.setRoomId(testRoom.getId());
@@ -407,6 +409,59 @@ class BookingServiceImplTest {
                 .hasMessageContaining("required");
 
         verify(bookingRepository, never()).save(any());
+    }
+
+    // ── cancelBooking date-boundary tests ─────────────────────────────────────
+    // Policy: cancellation must be made more than 24 hours before check-in.
+    // In calendar-date terms: checkInDate must be at least the day after tomorrow.
+    // Boundary points: tomorrow (last invalid) and day-after-tomorrow (first valid).
+
+    @ParameterizedTest(name = "checkInDate = {0} → within 24h window, must throw")
+    @MethodSource("cancelTooLateInputs")
+    @DisplayName("TC-BS-CANCEL-01~02 | cancelBooking | checkInDate within 24h → throws")
+    void cancelBooking_checkInWithin24Hours_shouldThrow(LocalDate checkInDate) {
+        Booking booking = buildCancellableBooking(checkInDate);
+        when(bookingRepository.findById(1L)).thenReturn(Optional.of(booking));
+        when(userService.getCurrentLoggedInUser()).thenReturn(testUser);
+
+        assertThatThrownBy(() -> bookingService.cancelBooking(1L))
+                .isInstanceOf(InvalidBookingStateAndDateException.class)
+                .hasMessageContaining("24 hours");
+    }
+
+    static Stream<Arguments> cancelTooLateInputs() {
+        return Stream.of(
+            // TC-BS-CANCEL-01: check-in is today — 0 days away
+            Arguments.of(LocalDate.now()),
+            // TC-BS-CANCEL-02: check-in is tomorrow — boundary, last invalid value
+            Arguments.of(LocalDate.now().plusDays(1))
+        );
+    }
+
+    @Test
+    @DisplayName("TC-BS-CANCEL-03 | cancelBooking | checkInDate = day after tomorrow → succeeds (valid boundary)")
+    void cancelBooking_checkInDayAfterTomorrow_shouldSucceed() {
+        Booking booking = buildCancellableBooking(LocalDate.now().plusDays(2));
+        when(bookingRepository.findById(1L)).thenReturn(Optional.of(booking));
+        when(userService.getCurrentLoggedInUser()).thenReturn(testUser);
+        when(bookingRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        bookingService.cancelBooking(1L);
+
+        ArgumentCaptor<Booking> captor = ArgumentCaptor.forClass(Booking.class);
+        verify(bookingRepository).save(captor.capture());
+        assertThat(captor.getValue().getBookingStatus()).isEqualTo(BookingStatus.CANCELLED);
+    }
+
+    /** Builds a BOOKED booking owned by testUser with the given check-in date. */
+    private Booking buildCancellableBooking(LocalDate checkInDate) {
+        Booking booking = new Booking();
+        booking.setId(1L);
+        booking.setUser(testUser);
+        booking.setBookingStatus(BookingStatus.BOOKED);
+        booking.setCheckInDate(checkInDate);
+        booking.setCheckOutDate(checkInDate.plusDays(2));
+        return booking;
     }
 
 }

@@ -102,6 +102,43 @@ class BookingStateMachineApiTest extends BaseApiTest {
             .body("message", containsStringIgnoringCase("Invalid status transition"));
     }
 
+    @Test @Order(4)
+    @DisplayName("TC-BSM-08 | cancelBooking endpoint | CHECKED_IN → cancel → 400")
+    void checkedIn_cancel_isRejected() {
+        String ref = createFreshBooking(50);
+        Long id    = resolveBookingId(ref);
+        forceUpdate(id, "CHECKED_IN");
+
+        given()
+            .spec(adminSpec)
+        .when()
+            .post("/bookings/{id}/cancel", id)
+        .then()
+            .statusCode(400)
+            .body("message", containsStringIgnoringCase("Cannot cancel"));
+    }
+
+    @Test @Order(5)
+    @DisplayName("TC-BSM-09 | cancelBooking endpoint | already CANCELLED → cancel again → 400")
+    void alreadyCancelled_cancelAgain_isRejected() {
+        String ref = createFreshBooking(55);
+        Long id    = resolveBookingId(ref);
+
+        // First cancel — should succeed
+        given().spec(customerSpec).when()
+            .post("/bookings/{id}/cancel", id)
+            .then().statusCode(200);
+
+        // Second cancel — booking is already CANCELLED, must be rejected
+        given()
+            .spec(customerSpec)
+        .when()
+            .post("/bookings/{id}/cancel", id)
+        .then()
+            .statusCode(400)
+            .body("message", containsStringIgnoringCase("Cannot cancel"));
+    }
+
     /** Creates a booking in BOOKED state; dateOffset separates date windows across tests to avoid availability conflicts. */
     private String createFreshBooking(int dateOffset) {
         return given()
