@@ -40,6 +40,12 @@ public class BookingController {
         return ResponseEntity.ok(bookingService.updateBooking(bookingDTO));
     }
 
+    @PostMapping("/{id}/cancel")
+    @PreAuthorize("hasAuthority('ADMIN') or hasAuthority('CUSTOMER')")
+    public ResponseEntity<Response> cancelBooking(@PathVariable Long id){
+        return ResponseEntity.ok(bookingService.cancelBooking(id));
+    }
+
 
 
 

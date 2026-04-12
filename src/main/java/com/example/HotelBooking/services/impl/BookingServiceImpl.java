@@ -9,6 +9,7 @@ import com.example.HotelBooking.entities.User;
 import com.example.HotelBooking.enums.BookingStatus;
 import com.example.HotelBooking.exceptions.InvalidBookingStateAndDateException;
 import com.example.HotelBooking.exceptions.NotFoundException;
+import org.springframework.security.access.AccessDeniedException;
 import com.example.HotelBooking.repositories.BookingRepository;
 import com.example.HotelBooking.repositories.RoomRepository;
 import com.example.HotelBooking.services.BookingCodeGenerator;
@@ -26,6 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Objects;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
@@ -169,6 +171,42 @@ public class BookingServiceImpl implements BookingService {
                 .build();
     }
 
+
+    @Override
+    @Transactional
+    public Response cancelBooking(Long bookingId) {
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new NotFoundException("Booking not found: " + bookingId));
+
+        User currentUser = userService.getCurrentLoggedInUser();
+
+        // Only the booking owner or an ADMIN may cancel.
+        boolean isOwner = Objects.equals(booking.getUser().getId(), currentUser.getId());
+        boolean isAdmin = currentUser.getRole().name().equals("ADMIN");
+        if (!isOwner && !isAdmin) {
+            throw new AccessDeniedException("You are not authorised to cancel this booking");
+        }
+
+        // Only BOOKED status can be cancelled; all other states are terminal or in-progress.
+        if (booking.getBookingStatus() != BookingStatus.BOOKED) {
+            throw new InvalidBookingStateAndDateException(
+                    "Cannot cancel a booking with status: " + booking.getBookingStatus());
+        }
+
+        // Cancellation is not allowed on or after the check-in date.
+        if (!LocalDate.now().isBefore(booking.getCheckInDate())) {
+            throw new InvalidBookingStateAndDateException(
+                    "Cannot cancel a booking on or after the check-in date");
+        }
+
+        booking.setBookingStatus(BookingStatus.CANCELLED);
+        bookingRepository.save(booking);
+
+        return Response.builder()
+                .status(200)
+                .message("Booking cancelled successfully")
+                .build();
+    }
 
     /**
      * Business rule: only certain status transitions are valid for an offline-payment hotel.
