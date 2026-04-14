@@ -1,6 +1,9 @@
 package api;
 
+import io.restassured.builder.RequestSpecBuilder;
+import io.restassured.http.ContentType;
 import io.restassured.response.ValidatableResponse;
+import io.restassured.specification.RequestSpecification;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Order;
@@ -274,12 +277,28 @@ class UserApiTest extends BaseApiTest {
     @DisplayName("TC-U-13 | updateOwnAccount | [Bug] invalid email format accepted — returns 200")
     void updateOwnAccount_invalidEmailFormat_returns200Bug() {
         // Bug: UserDTO.email has no @Email constraint and the controller has no @Valid.
-        // Any string is written directly by the service. Fix: add @Email to UserDTO + @Valid to the controller (returns 400).
+        // Any string is written directly by the service. Fix: add @Email to UserDTO + @Valid (returns 400).
+        //
+        // Uses a disposable account to avoid corrupting the shared customerSpec:
+        // changing email invalidates the JWT sub → customerSpec would fail for all subsequent tests.
+        String tempEmail    = "temp_email_test_" + UUID.randomUUID() + "@hotel.com";
+        String tempPassword = "TempPass1234!";
+
+        given().spec(anonSpec).body(registrationPayload(tempEmail, tempPassword))
+               .when().post("/auth/register").then().statusCode(200);
+
+        String tempToken = loginAndGetToken(tempEmail, tempPassword);
+        RequestSpecification tempSpec = new RequestSpecBuilder()
+                .addHeader("Authorization", "Bearer " + tempToken)
+                .setContentType(ContentType.JSON)
+                .setAccept(ContentType.JSON)
+                .build();
+
         Map<String, Object> body = new HashMap<>();
         body.put("email", "not-an-email");
 
         given()
-            .spec(customerSpec)
+            .spec(tempSpec)
             .body(body)
         .when()
             .put("/users/update")
@@ -290,11 +309,6 @@ class UserApiTest extends BaseApiTest {
             .body("message", equalTo("user updated successfully"));
 
         System.out.println("⚠️  TC-U-13: invalid email accepted — missing @Email/@Valid validation");
-
-        // Restore original email so other tests are unaffected
-        Map<String, Object> restore = new HashMap<>();
-        restore.put("email", USER_EMAIL);
-        given().spec(customerSpec).body(restore).when().put("/users/update");
     }
 
     @Test @Order(14)

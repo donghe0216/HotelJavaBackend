@@ -62,7 +62,7 @@ class BookingApiTest extends BaseApiTest {
             .body("booking.bookingReference", notNullValue())
             .body("booking.bookingReference", not(emptyString()))
             .body("booking.bookingStatus",    equalTo("BOOKED"))
-            .body("booking.totalPrice",       greaterThan(0))
+            .body("booking.totalPrice",       greaterThan(0.0f))
             .extract().path("booking.bookingReference");
     }
 
