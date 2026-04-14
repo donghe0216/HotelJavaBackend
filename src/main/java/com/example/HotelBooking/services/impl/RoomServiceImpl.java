@@ -7,6 +7,8 @@ import com.example.HotelBooking.enums.RoomType;
 import com.example.HotelBooking.exceptions.InvalidBookingStateAndDateException;
 import com.example.HotelBooking.exceptions.NameValueRequiredException;
 import com.example.HotelBooking.exceptions.NotFoundException;
+import com.example.HotelBooking.enums.BookingStatus;
+import com.example.HotelBooking.repositories.BookingRepository;
 import com.example.HotelBooking.repositories.RoomRepository;
 import com.example.HotelBooking.services.RoomService;
 import lombok.RequiredArgsConstructor;
@@ -32,6 +34,7 @@ public class RoomServiceImpl implements RoomService {
 
 
     private final RoomRepository roomRepository;
+    private final BookingRepository bookingRepository;
     private final ModelMapper modelMapper;
 
     @Value("${app.image.upload-dir}")
@@ -141,6 +144,17 @@ public class RoomServiceImpl implements RoomService {
         if (!roomRepository.existsById(id)){
             throw new NotFoundException("Room not found");
         }
+        List<BookingStatus> activeStatuses = List.of(BookingStatus.BOOKED, BookingStatus.CHECKED_IN);
+
+        // Block deletion when active bookings exist — room is currently in use
+        if (bookingRepository.existsByRoomIdAndBookingStatusIn(id, activeStatuses)) {
+            throw new InvalidBookingStateAndDateException(
+                    "Cannot delete room: there are active bookings for this room");
+        }
+
+        // Detach historical (CANCELLED / CHECKED_OUT) bookings from this room to satisfy
+        // the FK constraint, preserving booking history with room_id set to null
+        bookingRepository.detachHistoricalBookings(id, activeStatuses);
         roomRepository.deleteById(id);
 
         return Response.builder()
