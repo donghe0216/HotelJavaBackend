@@ -2,13 +2,13 @@ name: Deploy Backend to AWS
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Triggered automatically when the "API Tests" workflow completes successfully
-# on master.  Only fires on success — failed tests block deployment.
+# on main.  Only fires on success — failed tests block deployment.
 # ─────────────────────────────────────────────────────────────────────────────
 on:
   workflow_run:
     workflows: ["API Tests"]
     types: [completed]
-    branches: [master]
+    branches: [main]
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Required GitHub Secrets (Settings → Secrets and variables → Actions):
