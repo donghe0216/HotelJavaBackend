@@ -7,6 +7,7 @@ import com.example.HotelBooking.enums.RoomType;
 import com.example.HotelBooking.exceptions.InvalidBookingStateAndDateException;
 import com.example.HotelBooking.exceptions.NotFoundException;
 import org.springframework.dao.DataIntegrityViolationException;
+import com.example.HotelBooking.repositories.BookingRepository;
 import com.example.HotelBooking.repositories.RoomRepository;
 import com.example.HotelBooking.services.impl.RoomServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
@@ -45,6 +46,9 @@ class RoomServiceImplTest {
 
     @Mock
     private RoomRepository roomRepository;
+
+    @Mock
+    private BookingRepository bookingRepository;
 
     @Mock
     private ModelMapper modelMapper;
@@ -247,6 +251,7 @@ class RoomServiceImplTest {
     @DisplayName("TC-RS-14 | deleteRoom | valid id → deleted, returns 200")
     void deleteRoom_validId_success() {
         when(roomRepository.existsById(1L)).thenReturn(true);
+        when(bookingRepository.existsByRoomIdAndBookingStatusIn(any(), any())).thenReturn(false);
 
         Response response = roomService.deleteRoom(1L);
 
