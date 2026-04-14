@@ -180,39 +180,15 @@ public abstract class BaseApiTest {
      * the suite idempotent across multiple local runs.
      */
     private static void cleanupStaleTestData() {
-        // 1. Cancel all active bookings
-        try {
-            List<Map<String, Object>> bookings = given()
-                    .spec(adminSpec)
-                    .when()
-                    .get("/bookings/all")
-                    .then()
-                    .statusCode(200)
-                    .extract()
-                    .path("bookings");
-            if (bookings != null) {
-                for (Map<String, Object> booking : bookings) {
-                    String status = (String) booking.get("bookingStatus");
-                    if ("BOOKED".equals(status) || "CHECKED_IN".equals(status)) {
-                        Integer id = (Integer) booking.get("id");
-                        try {
-                            Map<String, Object> cancel = new HashMap<>();
-                            cancel.put("id", id);
-                            cancel.put("bookingStatus", "CANCELLED");
-                            given().spec(adminSpec).body(cancel)
-                                   .when().put("/bookings/update");
-                        } catch (Exception ignored) { /* best-effort */ }
-                    }
-                }
-            }
-        } catch (Exception ignored) { /* best-effort */ }
-
-        // 2. Delete test rooms (roomNumber > 200) and their bookings via DB
-        //    (FK constraint prevents pure-API deletion when cancelled bookings reference the room)
+        // Cancel all active bookings and delete test rooms via DB.
+        // Using the API to cancel CHECKED_IN bookings is blocked by state machine validation,
+        // so we go directly to the DB for both operations.
         try {
             new ProcessBuilder(
                 "docker", "exec", "hotel-mysql",
                 "mysql", "-uroot", "-proot", "hotel", "-e",
+                "UPDATE bookings SET booking_status='CANCELLED' WHERE booking_status IN ('BOOKED','CHECKED_IN');" +
+                "DELETE FROM users WHERE email='not-an-email' OR email LIKE 'temp_email_test_%' OR email LIKE 'new_%@hotel.com' OR email LIKE 'fresh_%@hotel.com' OR email LIKE 'admin_%@hotel.com';" +
                 "DELETE b FROM bookings b JOIN rooms r ON b.room_id = r.id WHERE r.room_number > 200;" +
                 "DELETE FROM rooms WHERE room_number > 200;"
             ).start().waitFor(10, TimeUnit.SECONDS);

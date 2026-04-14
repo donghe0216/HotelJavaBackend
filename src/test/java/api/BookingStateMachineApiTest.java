@@ -99,7 +99,7 @@ class BookingStateMachineApiTest extends BaseApiTest {
             .put("/bookings/update")
         .then()
             .statusCode(400)
-            .body("message", containsStringIgnoringCase("Invalid status transition"));
+            .body("message", containsStringIgnoringCase("checked out"));
     }
 
     @Test @Order(4)

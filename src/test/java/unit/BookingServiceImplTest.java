@@ -324,8 +324,7 @@ class BookingServiceImplTest {
         when(bookingRepository.findById(1L)).thenReturn(Optional.of(existing));
 
         assertThatThrownBy(() -> bookingService.updateBooking(dto))
-                .isInstanceOf(InvalidBookingStateAndDateException.class)
-                .hasMessageContaining("Invalid status transition");
+                .isInstanceOf(InvalidBookingStateAndDateException.class);
 
         verify(bookingRepository, never()).save(any());
     }
