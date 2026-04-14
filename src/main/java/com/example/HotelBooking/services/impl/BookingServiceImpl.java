@@ -217,16 +217,50 @@ public class BookingServiceImpl implements BookingService {
      * CHECKED_OUT, CANCELLED, and NO_SHOW are terminal: the booking lifecycle has ended.
      */
     private void validateStatusTransition(BookingStatus current, BookingStatus next) {
-        boolean valid = switch (current) {
-            case BOOKED      -> next == BookingStatus.CHECKED_IN
-                             || next == BookingStatus.CANCELLED
-                             || next == BookingStatus.NO_SHOW;
-            case CHECKED_IN  -> next == BookingStatus.CHECKED_OUT;
-            case CHECKED_OUT, CANCELLED, NO_SHOW -> false;
-        };
-        if (!valid) {
+        // Terminal states: booking lifecycle has ended, no further changes allowed
+        if (current == BookingStatus.CHECKED_OUT) {
             throw new InvalidBookingStateAndDateException(
-                    "Invalid status transition: " + current + " → " + next);
+                    "This booking has already been checked out and cannot be modified.");
+        }
+        if (current == BookingStatus.CANCELLED) {
+            throw new InvalidBookingStateAndDateException(
+                    "This booking has been cancelled and cannot be modified.");
+        }
+        if (current == BookingStatus.NO_SHOW) {
+            throw new InvalidBookingStateAndDateException(
+                    "This booking has been marked as No Show and cannot be modified.");
+        }
+
+        // BOOKED: valid targets are CHECKED_IN, CANCELLED, NO_SHOW
+        if (current == BookingStatus.BOOKED) {
+            if (next == BookingStatus.CHECKED_OUT) {
+                throw new InvalidBookingStateAndDateException(
+                        "Cannot check out a booking that has not checked in yet. Please set status to CHECKED IN first.");
+            }
+            if (next == BookingStatus.BOOKED) {
+                throw new InvalidBookingStateAndDateException(
+                        "Booking is already in BOOKED status.");
+            }
+        }
+
+        // CHECKED_IN: only CHECKED_OUT is allowed
+        if (current == BookingStatus.CHECKED_IN) {
+            if (next == BookingStatus.BOOKED) {
+                throw new InvalidBookingStateAndDateException(
+                        "Cannot revert a booking back to BOOKED after the guest has checked in.");
+            }
+            if (next == BookingStatus.CANCELLED) {
+                throw new InvalidBookingStateAndDateException(
+                        "Cannot cancel a booking after the guest has already checked in.");
+            }
+            if (next == BookingStatus.NO_SHOW) {
+                throw new InvalidBookingStateAndDateException(
+                        "Cannot mark as No Show after the guest has checked in.");
+            }
+            if (next == BookingStatus.CHECKED_IN) {
+                throw new InvalidBookingStateAndDateException(
+                        "Booking is already in CHECKED IN status.");
+            }
         }
     }
 
