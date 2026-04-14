@@ -5,6 +5,7 @@ import com.example.HotelBooking.dtos.RoomDTO;
 import com.example.HotelBooking.entities.Room;
 import com.example.HotelBooking.enums.RoomType;
 import com.example.HotelBooking.exceptions.InvalidBookingStateAndDateException;
+import com.example.HotelBooking.exceptions.NameValueRequiredException;
 import com.example.HotelBooking.exceptions.NotFoundException;
 import com.example.HotelBooking.repositories.RoomRepository;
 import com.example.HotelBooking.services.RoomService;
@@ -40,6 +41,17 @@ public class RoomServiceImpl implements RoomService {
 
     @Override
     public Response addRoom(RoomDTO roomDTO, MultipartFile imageFile) {
+
+        if (roomDTO.getRoomNumber() == null) throw new NameValueRequiredException("Room number is required");
+        validateRoomNumber(roomDTO.getRoomNumber());
+
+        if (roomDTO.getType() == null) throw new NameValueRequiredException("Room type is required");
+
+        if (roomDTO.getPricePerNight() == null) throw new NameValueRequiredException("Price per night is required");
+        validatePrice(roomDTO.getPricePerNight());
+
+        if (roomDTO.getCapacity() == null) throw new NameValueRequiredException("Capacity is required");
+        validateCapacity(roomDTO.getCapacity());
 
         Room roomToSave = modelMapper.map(roomDTO, Room.class);
 
@@ -250,5 +262,20 @@ public class RoomServiceImpl implements RoomService {
 
         return "/rooms/" + uniqueFileName;
 
+    }
+
+    private void validateRoomNumber(Integer roomNumber) {
+        if (roomNumber <= 0)
+            throw new NameValueRequiredException("Room number must be greater than 0");
+    }
+
+    private void validatePrice(BigDecimal price) {
+        if (price.compareTo(BigDecimal.ZERO) <= 0)
+            throw new NameValueRequiredException("Price per night must be greater than 0");
+    }
+
+    private void validateCapacity(Integer capacity) {
+        if (capacity <= 0)
+            throw new NameValueRequiredException("Capacity must be at least 1");
     }
 }
