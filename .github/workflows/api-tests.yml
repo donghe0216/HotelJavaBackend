@@ -61,11 +61,10 @@ jobs:
 
       # ── 4. Start backend with JaCoCo agent ────────────────────────
       #    Secrets are stored in GitHub Repo → Settings → Secrets and variables → Actions
-      #    Required secrets: CI_JWT_SECRET, CI_STRIPE_SECRET_KEY
+      #    Required secrets: CI_JWT_SECRET
       - name: Start backend
         env:
           JWT_SECRET: ${{ secrets.CI_JWT_SECRET }}
-          STRIPE_SECRET_KEY: ${{ secrets.CI_STRIPE_SECRET_KEY }}
         run: |
           mkdir -p /tmp/hotel-images
           java -javaagent:/tmp/jacoco-agent.jar=destfile=/tmp/jacoco.exec \
@@ -74,7 +73,6 @@ jobs:
             --spring.datasource.username=root \
             --spring.datasource.password=root \
             --secreteJwtString=${JWT_SECRET} \
-            --stripe.api.secret.key=${STRIPE_SECRET_KEY} \
             --app.image.upload-dir=/tmp/hotel-images/ \
             --management.health.mail.enabled=false \
           > /tmp/backend.log 2>&1 &

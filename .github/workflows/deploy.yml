@@ -1,0 +1,93 @@
+name: Deploy Backend to AWS
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Triggered automatically when the "API Tests" workflow completes successfully
+# on master.  Only fires on success — failed tests block deployment.
+# ─────────────────────────────────────────────────────────────────────────────
+on:
+  workflow_run:
+    workflows: ["API Tests"]
+    types: [completed]
+    branches: [master]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Required GitHub Secrets (Settings → Secrets and variables → Actions):
+#
+#   AWS_ACCESS_KEY_ID        IAM user / role access key
+#   AWS_SECRET_ACCESS_KEY    IAM user / role secret
+#   ARTIFACTS_BUCKET         Artifact S3 bucket name  (terraform output artifacts_bucket)
+#   EC2_INSTANCE_ID          EC2 instance ID          (terraform output webapp_ec2_instance_id)
+#
+# ─────────────────────────────────────────────────────────────────────────────
+
+env:
+  AWS_REGION: ap-northeast-1
+
+jobs:
+
+  # ── Guard: only run when API Tests passed ──────────────────────────────────
+  check:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    steps:
+      - run: echo "API Tests passed — proceeding with backend deployment"
+
+  # ── Backend: Maven build → JAR upload to S3 → deploy to EC2 via SSM ───────
+  deploy-backend:
+    needs: check
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout backend
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Build JAR
+        run: mvn package -DskipTests --no-transfer-progress
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region:     ${{ env.AWS_REGION }}
+
+      - name: Upload JAR to S3
+        run: |
+          aws s3 cp target/HotelBooking-0.0.1-SNAPSHOT.jar \
+            s3://${{ secrets.ARTIFACTS_BUCKET }}/app.jar
+
+      - name: Deploy to EC2 via SSM
+        run: |
+          COMMAND_ID=$(aws ssm send-command \
+            --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
+            --document-name "AWS-RunShellScript" \
+            --parameters 'commands=[
+              "aws s3 cp s3://${{ secrets.ARTIFACTS_BUCKET }}/app.jar /opt/hotel/app.jar",
+              "systemctl restart hotel"
+            ]' \
+            --query "Command.CommandId" \
+            --output text)
+
+          echo "SSM Command ID: ${COMMAND_ID}"
+
+          # Wait for command to complete (max 5 min)
+          aws ssm wait command-executed \
+            --command-id "${COMMAND_ID}" \
+            --instance-id "${{ secrets.EC2_INSTANCE_ID }}"
+
+          STATUS=$(aws ssm get-command-invocation \
+            --command-id "${COMMAND_ID}" \
+            --instance-id "${{ secrets.EC2_INSTANCE_ID }}" \
+            --query "Status" --output text)
+
+          echo "Deployment status: ${STATUS}"
+          [ "$STATUS" = "Success" ] || exit 1
