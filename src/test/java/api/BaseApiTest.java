@@ -178,19 +178,77 @@ public abstract class BaseApiTest {
      * (roomNumber > 200) left over from previous test runs.
      * Called once per test class after specs are initialised, making
      * the suite idempotent across multiple local runs.
+     *
+     * Strategy (must work in CI without Docker):
+     *   CHECKED_IN → CHECKED_OUT via API  (valid transition; CHECKED_OUT is excluded from
+     *                                       isRoomAvailable's active-status check, so the
+     *                                       room becomes bookable again immediately)
+     *   BOOKED     → CANCELLED  via API   (valid transition)
+     *   Test rooms (roomNumber > 200) → DELETE via admin API (bookings detached by RoomService)
+     *   Test users                    → docker exec best-effort (non-critical for availability)
      */
     private static void cleanupStaleTestData() {
-        // Cancel all active bookings and delete test rooms via DB.
-        // Using the API to cancel CHECKED_IN bookings is blocked by state machine validation,
-        // so we go directly to the DB for both operations.
+        // Step 1: resolve and neutralise all active bookings via the HTTP API
+        try {
+            List<Map<String, Object>> bookings = given()
+                    .spec(adminSpec)
+                    .when()
+                    .get("/bookings/all")
+                    .then()
+                    .statusCode(200)
+                    .extract()
+                    .path("bookings");
+
+            if (bookings != null) {
+                for (Map<String, Object> booking : bookings) {
+                    String status = (String) booking.get("bookingStatus");
+                    Integer id    = (Integer) booking.get("id");
+                    if (id == null) continue;
+
+                    if ("CHECKED_IN".equals(status)) {
+                        // Advance to CHECKED_OUT — valid transition, CHECKED_OUT does not
+                        // appear in isRoomAvailable's active-status list, so the room is freed.
+                        given().spec(adminSpec)
+                                .body(Map.of("id", id, "bookingStatus", "CHECKED_OUT"))
+                                .when().put("/bookings/update");
+                    } else if ("BOOKED".equals(status)) {
+                        given().spec(adminSpec)
+                                .body(Map.of("id", id, "bookingStatus", "CANCELLED"))
+                                .when().put("/bookings/update");
+                    }
+                }
+            }
+        } catch (Exception ignored) { /* best-effort */ }
+
+        // Step 2: delete test rooms (roomNumber > 200) via admin API
+        try {
+            List<Map<String, Object>> rooms = given()
+                    .spec(adminSpec)
+                    .when()
+                    .get("/rooms/all")
+                    .then()
+                    .statusCode(200)
+                    .extract()
+                    .path("rooms");
+
+            if (rooms != null) {
+                for (Map<String, Object> room : rooms) {
+                    Integer roomNumber = (Integer) room.get("roomNumber");
+                    Integer id         = (Integer) room.get("id");
+                    if (id != null && roomNumber != null && roomNumber > 200) {
+                        given().spec(adminSpec)
+                                .when().delete("/rooms/delete/{id}", id);
+                    }
+                }
+            }
+        } catch (Exception ignored) { /* best-effort */ }
+
+        // Step 3: delete test user rows — docker exec only, silently skipped in CI
         try {
             new ProcessBuilder(
                 "docker", "exec", "hotel-mysql",
                 "mysql", "-uroot", "-proot", "hotel", "-e",
-                "UPDATE bookings SET booking_status='CANCELLED' WHERE booking_status IN ('BOOKED','CHECKED_IN');" +
-                "DELETE FROM users WHERE email='not-an-email' OR email LIKE 'temp_email_test_%' OR email LIKE 'new_%@hotel.com' OR email LIKE 'fresh_%@hotel.com' OR email LIKE 'admin_%@hotel.com';" +
-                "DELETE b FROM bookings b JOIN rooms r ON b.room_id = r.id WHERE r.room_number > 200;" +
-                "DELETE FROM rooms WHERE room_number > 200;"
+                "DELETE FROM users WHERE email='not-an-email' OR email LIKE 'temp_email_test_%' OR email LIKE 'new_%@hotel.com' OR email LIKE 'fresh_%@hotel.com' OR email LIKE 'admin_%@hotel.com';"
             ).start().waitFor(10, TimeUnit.SECONDS);
         } catch (Exception ignored) { /* best-effort — Docker may not be available in all envs */ }
     }
